@@ -1,10 +1,18 @@
-import { Button } from '@chakra-ui/react';
+import { Route, Routes } from 'react-router-dom';
+import HomePage from './pages/HomePage/HomePage';
+import AuthPage from './pages/AuthPage/AuthPage';
+import LandingPage from './pages/LandingPage/LandingPage';
 
 function App() {
 
   return (
     <>
-      <Button> Click me </Button>
+      <Routes>
+        <Route path = '/' element = {<HomePage />} />
+        <Route path = '/auth' element = {<AuthPage />} />
+        <Route path = '/LandingPage' element = {<LandingPage />} />
+      </Routes>
+
     </>
   );
 }
