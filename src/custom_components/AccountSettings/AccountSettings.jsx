@@ -19,11 +19,13 @@ import {
 } from '@chakra-ui/react';
 import { useNavbar } from "../../context/NavbarContext";
 import { useRef } from 'react';
+import { useColorMode } from "@chakra-ui/react";
 
 const AccountSettings = () => {
     const { isNavbarOpen } = useNavbar();
     const { isOpen, onOpen, onClose } = useDisclosure();
     const cancelRef = useRef();
+    const { colorMode } = useColorMode();
 
     return (
         <Box>
@@ -161,12 +163,12 @@ const AccountSettings = () => {
                 onClose={onClose}
             >
                 <AlertDialogOverlay>
-                    <AlertDialogContent bg="gray.800">
-                        <AlertDialogHeader fontSize="lg" fontWeight="bold">
+                    <AlertDialogContent bg={colorMode === 'light' ? 'white' : "#121212"}>
+                        <AlertDialogHeader fontSize="lg" fontWeight="bold" color={colorMode === 'light' ? 'gray.800' : 'white'}>
                             Delete Account
                         </AlertDialogHeader>
 
-                        <AlertDialogBody>
+                        <AlertDialogBody color={colorMode === 'light' ? 'gray.600' : 'gray.200'}>
                             Are you sure? This action cannot be undone. All your data will be permanently removed.
                         </AlertDialogBody>
 

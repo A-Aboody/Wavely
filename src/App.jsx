@@ -1,4 +1,5 @@
 import { Route, Routes } from 'react-router-dom';
+import CreatePage from './pages/CreatePage/CreatePage';
 import HomePage from './pages/HomePage/HomePage';
 import AuthPage from './pages/AuthPage/AuthPage';
 import ProfilePage from './pages/ProfilePage/ProfilePage';
@@ -13,6 +14,7 @@ function App() {
       <PageLayout>
         <Routes>
           <Route path='/' element={<HomePage />} />
+          <Route path='/create' element={<CreatePage />} />
           <Route path='/profile' element={<ProfilePage />} />
           <Route path='/uploads' element={<UploadsPage />} />
           <Route path='/settings' element={<SettingsPage />} />

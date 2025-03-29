@@ -2,10 +2,15 @@ import React, { useState, useRef } from 'react';
 import { Box, VStack, Button, Heading, Flex, useBreakpointValue } from '@chakra-ui/react';
 import AccountSettings from '../../custom_components/AccountSettings/AccountSettings';
 import { useNavbar } from "../../context/NavbarContext";
+import AppearanceSettings from '../../custom_components/AppearanceSettings/AppearanceSettings';
+import NotificationSettings from '../../custom_components/NotificationSettings/NotificationSettings';
+import PrivacySettings from '../../custom_components/PrivacySettings/PrivacySettings';
+import { useColorMode } from '@chakra-ui/react';
 
 const SettingsPage = () => {
     const [activeSection, setActiveSection] = useState('account');
     const { isNavbarOpen } = useNavbar();
+    const { colorMode } = useColorMode();
 
     const accountRef = useRef(null);
     const privacyRef = useRef(null);
@@ -23,12 +28,15 @@ const SettingsPage = () => {
             overflow="hidden"
             position="relative"
             transition="width 0.2s"
+            bg={colorMode === 'dark' ? '#121212' : 'white'}
+
         >
             {/* Sidebar Navigation */}
             <Box 
                 w={"250px"} 
                 borderRight="1px solid" 
                 borderColor="whiteAlpha.300" 
+                bg={colorMode === 'dark' ? '#121212' : 'white'}
                 flexShrink={0} 
                 p={4}
                 position="sticky"
@@ -70,7 +78,7 @@ const SettingsPage = () => {
                 flex={1}
                 h="100vh"
                 p={6}
-                bg="#333e4b"
+                bg={colorMode === 'dark' ? "#333e4b" : "gray.100"}
                 position="relative"
                 overflow="hidden"
             >
@@ -80,7 +88,7 @@ const SettingsPage = () => {
                     h="100%"
                     boxShadow="lg"
                     p={8}
-                    bg="#121212"
+                    bg={colorMode === 'dark' ? "#121212" : "white"}
                     overflowY="auto"
                     position="relative"
                     css={{
@@ -95,18 +103,15 @@ const SettingsPage = () => {
                         </Box>
 
                         <Box ref={privacyRef}>
-                            <Heading size="lg" mb={6}>Privacy Settings</Heading>
-                            {/* Privacy content here */}
+                            <PrivacySettings />
                         </Box>
 
                         <Box ref={notificationsRef}>
-                            <Heading size="lg" mb={6}>Notification Settings</Heading>
-                            {/* Notifications content here */}
+                            <NotificationSettings />
                         </Box>
 
                         <Box ref={appearanceRef}>
-                            <Heading size="lg" mb={6}>Appearance Settings</Heading>
-                            {/* Appearance content here */}
+                            <AppearanceSettings />
                         </Box>
                     </VStack>
                 </Box>

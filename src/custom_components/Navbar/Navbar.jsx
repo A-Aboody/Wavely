@@ -1,26 +1,46 @@
 import { Avatar, Box, Flex, Icon, Link, IconButton, VStack, Tooltip, useDisclosure, Image } from "@chakra-ui/react";
 import { Link as RouterLink } from "react-router-dom";
-import { FiHome, FiMusic, FiSettings, FiMenu, FiX, FiPlusCircle, FiUser, FiUpload, FiLogOut } from "react-icons/fi";
+import { FiHome, FiMusic, FiSettings, FiMenu, FiX, FiPlusCircle, FiUser, FiUpload, FiLogOut, FiFile } from "react-icons/fi";
 import { useNavbar } from "../../context/NavbarContext";
-
+import { useColorMode } from "@chakra-ui/react";
+import { useState } from 'react';
+import { useLocation } from 'react-router-dom'; 
 
 const Navbar = () => {
   const { isNavbarOpen, setIsNavbarOpen } = useNavbar();
+  const { colorMode } = useColorMode();
+  const location = useLocation();
+
+  const [profileData, setProfileData] = useState(() => {
+    const savedData = localStorage.getItem('profileData');
+    return savedData ? JSON.parse(savedData) : {
+      username: 'aa.a021',
+      displayName: 'adubla',
+      profileImage: '/api/placeholder/200/200'
+    };
+  });
 
   const onToggle = () => setIsNavbarOpen(!isNavbarOpen);
 
   const navItems = [
-    { icon: FiPlusCircle, label: 'Create', path: '/' },
+    { icon: FiHome, label: 'Home', path: '/' },
+    { icon: FiPlusCircle, label: 'Create', path: '/create' },
     { icon: FiUser, label: 'Profile', path: '/profile' },
-    { icon: FiUpload, label: 'All Uploads', path: '/uploads' },
+    { icon: FiFile, label: 'All Uploads', path: '/uploads' },
     { icon: FiSettings, label: 'Settings', path: '/settings' },
   ];
 
+  const isLinkActive = (path) => {
+    return location.pathname === path;
+  };
+
   return (
     <Box
+      className="navbar"
       height={"100vh"}
       borderRight={"1px solid"}
-      borderColor={"whiteAlpha.300"}
+      borderColor={colorMode === 'light' ? "blackAlpha.200" : "whiteAlpha.300"}
+      boxShadow={colorMode === 'light' ? "1px 0 2px rgba(0, 0, 0, 0.05)" : "none"}
       py={8}
       position={"sticky"}
       top={0}
@@ -28,6 +48,7 @@ const Navbar = () => {
       px={{base: 2, md: 4}}
       width={isNavbarOpen ? "240px" : "90px"}
       transition="width 0.2s"
+      bg={colorMode === 'light' ? "white" : "transparent"}
     >
       <Flex direction={"column"} gap={10} w={"full"} height={"full"}>
         {/* Toggle Button*/}
@@ -51,22 +72,23 @@ const Navbar = () => {
             minWidth="60px"
             mx="auto"
           >
-            <Image
-              src="/Wavely-Logo.png"
-              alt="Logo"
-              width="100%"
-              height="auto"
-              objectFit="contain"
-            />
+          <Avatar
+            src={profileData.profileImage}
+            name={profileData.displayName}
+            size="lg"
+            border="3px solid"
+            borderColor={colorMode === 'light' ? "gray.200" : "whiteAlpha.300"}
+          />
           </Box>
           {isNavbarOpen && (
             <Box
-              fontSize="sm"
-              color="whiteAlpha.900"
+              fontSize="md"
+              fontWeight="medium"
+              color={colorMode === 'light' ? "gray.800" : "whiteAlpha.900"}
               textAlign="center"
               whiteSpace="nowrap"
             >
-              @username
+              @{profileData.username}
             </Box>
           )}
         </Box>
@@ -91,13 +113,23 @@ const Navbar = () => {
                 px={3}
                 py={2}
                 borderRadius="md"
+                bg={isLinkActive(item.path) ? "whiteAlpha.200" : "transparent"}
+                color={isLinkActive(item.path) ? "#578bdd" : "inherit"}
                 _hover={{ bg: "whiteAlpha.200" }}
               >
-                <Icon as={item.icon} boxSize={5} />
+              <Icon 
+                as={item.icon} 
+                boxSize={5}
+                color={isLinkActive(item.path) ? "#578bdd" : "inherit"} 
+              />
                 {isNavbarOpen && (
-                  <Box ml={3} display={isNavbarOpen ? "block" : "none"}>
-                    {item.label}
-                  </Box>
+                  <Box 
+                  ml={3} 
+                  display={isNavbarOpen ? "block" : "none"}
+                  fontWeight={isLinkActive(item.path) ? "medium" : "normal"}
+                >
+                  {item.label}
+                </Box>
                 )}
               </Link>
             </Tooltip>
