@@ -20,9 +20,7 @@ const SettingsPage = () => {
 
     return (
         <Flex 
-            w="100%"
-            maxW="100vw"
-            minH="100vh"
+            w={{ base: "100%", md: isNavbarOpen ? "calc(100vw - 240px)" : "1830px" }}
             overflow="hidden"
             position="relative"
             transition="width 0.2s"
@@ -30,7 +28,6 @@ const SettingsPage = () => {
             {/* Sidebar Navigation */}
             <Box 
                 w={sidebarWidth} 
-                minW={sidebarWidth}
                 borderRight="1px solid" 
                 borderColor="whiteAlpha.300" 
                 flexShrink={0} 
@@ -72,7 +69,7 @@ const SettingsPage = () => {
             {/* Content Area */}
             <Box 
                 flex={1}
-                minH="100vh"
+                h="100vh"
                 p={6}
                 bg="#333e4b"
                 position="relative"
@@ -82,8 +79,6 @@ const SettingsPage = () => {
                     borderRadius="lg"
                     w="100%"
                     h="100%"
-                    maxW="1200px"
-                    mx="auto"
                     boxShadow="lg"
                     p={8}
                     bg="#121212"
