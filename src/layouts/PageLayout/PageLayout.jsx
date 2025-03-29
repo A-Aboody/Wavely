@@ -1,20 +1,21 @@
 import { Box, Flex } from "@chakra-ui/react";
 import Navbar from "../../custom_components/Navbar/Navbar";
 import { useLocation } from "react-router-dom";
+import { useNavbar } from "../../context/NavbarContext";
 
 function PageLayout({ children }) {
     const { pathname } = useLocation();
+    const { isNavbarOpen } = useNavbar();
+
     return (
         <Flex>
-            {/*side bar on the left*/}
             {pathname !== "/auth" ? (
-                <Box w={{ base: "70px", md: "240px" }}>
+                <Box>
                     <Navbar />
                 </Box>
             ) : null}
 
-            {/*page content on the right*/}
-            <Box flex={1} w={{ base: "calc(100% - 70px)", md: "calc(100% - 240px)" }}>
+            <Box>
                 {children}
             </Box>
         </Flex>
