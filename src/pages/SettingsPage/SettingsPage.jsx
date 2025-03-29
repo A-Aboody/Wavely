@@ -5,7 +5,6 @@ import { useNavbar } from "../../context/NavbarContext";
 
 const SettingsPage = () => {
     const [activeSection, setActiveSection] = useState('account');
-    const sidebarWidth = useBreakpointValue({ base: "100px", md: "200px" });
     const { isNavbarOpen } = useNavbar();
 
     const accountRef = useRef(null);
@@ -20,14 +19,14 @@ const SettingsPage = () => {
 
     return (
         <Flex 
-            w={{ base: "100%", md: isNavbarOpen ? "calc(100vw - 240px)" : "1830px" }}
+            w={{ base: "100%", md: isNavbarOpen ? "calc(100vw - 240px)" : "calc(100vw - 90px)" }}
             overflow="hidden"
             position="relative"
             transition="width 0.2s"
         >
             {/* Sidebar Navigation */}
             <Box 
-                w={sidebarWidth} 
+                w={"250px"} 
                 borderRight="1px solid" 
                 borderColor="whiteAlpha.300" 
                 flexShrink={0} 
