@@ -42,8 +42,9 @@ import {
   FiUser
 } from 'react-icons/fi';
 import { useNavbar } from "../../context/NavbarContext";
+import { useWaves } from '../../context/WaveContext';
 import { useRef, useEffect } from 'react';
-
+import WaveCard from '../../custom_components/WaveCard/WaveCard';
 
 const ProfilePage = () => {
   const { isNavbarOpen } = useNavbar();
@@ -52,6 +53,9 @@ const ProfilePage = () => {
   const profileImageRef = useRef(null);
   const bannerImageRef = useRef(null);
   const initialFocusRef = useRef(null);
+  const { waves, deleteWave, likeWave } = useWaves();
+  const [isMobile, setIsMobile] = useState(window.innerWidth < 768);
+
   
   // Modal disclosure completely isolated
   const { isOpen, onOpen, onClose } = useDisclosure();
@@ -70,6 +74,15 @@ const ProfilePage = () => {
       likes: 10
     };
   });
+
+  useEffect(() => {
+    const handleResize = () => {
+      setIsMobile(window.innerWidth < 768);
+    };
+
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, []);
 
   // Form state kept completely separate from profileData
   const [formData, setFormData] = useState({
@@ -92,6 +105,9 @@ const ProfilePage = () => {
       });
     }
   }, [isOpen, profileData]);
+  
+  // Filter waves created by the current user
+  const userWaves = waves.filter(wave => wave.username === profileData.username);
   
   // Sample data for user uploads
   const uploads = [
@@ -226,8 +242,10 @@ const ProfilePage = () => {
   
   return (
     <Box 
-      w="100%"
-      minW={{ base: "100%", md: isNavbarOpen ? "calc(100vw - 240px)" : "calc(100vw - 90px)" }}
+      w="100vw"
+      ml={isMobile ? 0 : isNavbarOpen ? "-240px" : "-90px"}
+      pl={isMobile ? 0 : isNavbarOpen ? "240px" : "90px"}
+      transition="all 0.2s"
       overflowX="hidden"
     >
       {/* Banner Image */}
@@ -254,6 +272,7 @@ const ProfilePage = () => {
         mx="auto" 
         px={{ base: 4, md: 8 }}
         transform="translateY(-60px)"
+        pb={isMobile ? "80px" : 6} // Add bottom padding on mobile for the navbar
       >
         <Flex 
           direction={{ base: "column", md: "row" }} 
@@ -339,46 +358,101 @@ const ProfilePage = () => {
         >
           <Tabs isFitted colorScheme="blue" onChange={(index) => setActiveTab(index)}>
             <TabList>
-              <Tab><HStack><Icon as={FiVideo} /><Text>Videos</Text></HStack></Tab>
-              <Tab><HStack><Icon as={FiImage} /><Text>Reposts</Text></HStack></Tab>
-              <Tab><HStack><Icon as={FiHeart} /><Text>Favorites</Text></HStack></Tab>
+              <Tab><HStack><Icon as={FiVideo} /><Text>Waves</Text></HStack></Tab>
+              <Tab><HStack><Icon as={FiImage} /><Text>Uploads</Text></HStack></Tab>
               <Tab><HStack><Icon as={FiHeart} /><Text>Liked</Text></HStack></Tab>
             </TabList>
             
             <TabPanels>
-              <TabPanel p={4}>
-                {renderUserUploads(uploads.filter(item => item.type === 'video'))}
-              </TabPanel>
-              
-              <TabPanel p={4}>
-                {renderUserUploads(uploads.slice(2, 5))}
-              </TabPanel>
-              
-              <TabPanel p={4}>
-                {renderUserUploads(uploads.filter(item => item.likes > 30))}
-              </TabPanel>
-              
-              <TabPanel p={4}>
-                {renderUserUploads(uploads.filter(item => item.likes > 20))}
-              </TabPanel>
-            </TabPanels>
+            <TabPanel p={4}>
+              {userWaves.length > 0 ? (
+                <Grid
+                  templateColumns={{
+                    base: "1fr",
+                    sm: "repeat(2, 1fr)",
+                    md: "repeat(3, 1fr)",
+                    lg: "repeat(3, 1fr)"
+                  }}
+                  gap={4}
+                  width="100%"
+                >
+                  {userWaves.map((wave) => (
+                    <Box 
+                      key={wave.id} 
+                      borderRadius="lg" 
+                      overflow="hidden"
+                      bg={colorMode === 'dark' ? "#1a1a1a" : 'white'}
+                      boxShadow="md"
+                      borderWidth="1px"
+                      borderColor={colorMode === 'dark' ? 'gray.700' : 'gray.200'}
+                    >
+                      <WaveCard 
+                        wave={wave}
+                        currentUser={profileData}
+                        onLike={() => likeWave(wave.id)}
+                        onDelete={() => deleteWave(wave.id)}
+                        compactMode={true} // Add this prop to your WaveCard component
+                      />
+                    </Box>
+                  ))}
+                </Grid>
+              ) : (
+                <Box textAlign="center" py={10}>
+                  <Text fontSize="lg" color="gray.500">No waves posted yet</Text>
+                </Box>
+              )}
+            </TabPanel>
+            
+            <TabPanel p={4}>
+              {renderUserUploads(uploads)}
+            </TabPanel>
+            
+            <TabPanel p={4}>
+              {waves.filter(wave => wave.likes > 0).length > 0 ? (
+                <Grid
+                  templateColumns={{
+                    base: "1fr",
+                    sm: "repeat(2, 1fr)",
+                    md: "repeat(3, 1fr)",
+                    lg: "repeat(3, 1fr)"
+                  }}
+                  gap={4}
+                  width="100%"
+                >
+                  {waves
+                    .filter(wave => wave.likes > 0)
+                    .map((wave) => (
+                      <Box 
+                        key={wave.id} 
+                        borderRadius="lg" 
+                        overflow="hidden"
+                        bg={colorMode === 'dark' ? "#1a1a1a" : 'white'}
+                        boxShadow="md"
+                        borderWidth="1px"
+                        borderColor={colorMode === 'dark' ? 'gray.700' : 'gray.200'}
+                      >
+                        <WaveCard 
+                          wave={wave}
+                          currentUser={profileData}
+                          onLike={() => likeWave(wave.id)}
+                          onDelete={() => deleteWave(wave.id)}
+                          compactMode={true}
+                        />
+                      </Box>
+                    ))}
+                </Grid>
+              ) : (
+                <Box textAlign="center" py={10}>
+                  <Text fontSize="lg" color="gray.500">No liked waves yet</Text>
+                </Box>
+              )}
+            </TabPanel>
+          </TabPanels>
           </Tabs>
-          
-          {activeTab === 0 && uploads.filter(item => item.type === 'video').length === 0 && (
-            <Box textAlign="center" py={10}>
-              <Text fontSize="lg" color="gray.500">No videos uploaded yet</Text>
-            </Box>
-          )}
-          
-          {activeTab === 1 && uploads.slice(2, 5).length === 0 && (
-            <Box textAlign="center" py={10}>
-              <Text fontSize="lg" color="gray.500">No reposts yet</Text>
-            </Box>
-          )}
         </Box>
       </Flex>
       
-      {/* Edit Profile Modal - Modified to ensure it doesn't reopen unexpectedly */}
+      {/* Edit Profile Modal */}
       <Modal 
         isOpen={isOpen} 
         onClose={onClose}

@@ -1,4 +1,5 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import {
   Box,
   Flex,
@@ -30,11 +31,16 @@ import {
   FiStar
 } from 'react-icons/fi';
 import { useNavbar } from "../../context/NavbarContext";
+import WaveCard from '../../custom_components/WaveCard/WaveCard';
+import { useWaves } from '../../context/WaveContext';
 
 const HomePage = () => {
   const { colorMode } = useColorMode();
   const isDark = colorMode === 'dark';
   const { isNavbarOpen } = useNavbar();
+  const navigate = useNavigate();
+  const { waves, deleteWave } = useWaves();
+  const [isMobile, setIsMobile] = useState(window.innerWidth < 768);
   
   // Sample user data
   const [userData] = useState(() => {
@@ -45,62 +51,31 @@ const HomePage = () => {
       profileImage: '/api/placeholder/200/200'
     };
   });
+
+  useEffect(() => {
+    const handleResize = () => {
+      setIsMobile(window.innerWidth < 768);
+    };
+
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, []);
   
-  // Sample waves data (posts from friends)
-  const [waves, setWaves] = useState([
-    {
-      id: 1,
-      username: 'wave_rider',
-      displayName: 'Kelly Slater',
-      profileImage: '/api/placeholder/100/100',
-      content: 'Just caught the most amazing wave at Pipeline today! The conditions were perfect.',
-      image: '/api/placeholder/600/400',
-      timestamp: '2h ago',
-      likes: 243,
-      comments: 42,
-      views: 1283,
-      rating: 4.8,
-    },
-    {
-      id: 2,
-      username: 'beach_lover',
-      displayName: 'Malia Jones',
-      profileImage: '/api/placeholder/100/100',
-      content: 'Sunset session at Waikiki was magical. Small waves but perfect for longboarding.',
-      image: '/api/placeholder/600/400',
-      timestamp: '5h ago',
-      likes: 187,
-      comments: 23,
-      views: 891,
-      rating: 4.2,
-    },
-    {
-      id: 3,
-      username: 'surf_pro',
-      displayName: 'John Florence',
-      profileImage: '/api/placeholder/100/100',
-      content: 'Testing my new board at Sunset Beach. These glassy conditions are rare!',
-      image: '/api/placeholder/600/400',
-      timestamp: '1d ago',
-      likes: 427,
-      comments: 56,
-      views: 2104,
-      rating: 4.9,
-    },
-    {
-      id: 4,
-      username: 'ocean_girl',
-      displayName: 'Carissa Moore',
-      profileImage: '/api/placeholder/100/100',
-      content: 'Morning surf check. Looks like today will be pumping at Off the Wall.',
-      image: '/api/placeholder/600/400',
-      timestamp: '1d ago',
-      likes: 312,
-      comments: 38,
-      views: 1572,
-      rating: 4.5,
-    }
-  ]);
+  const handleDeleteWave = (id) => {
+    deleteWave(id); // This will trigger a context update
+  };
+
+  const handleHomeClick = () => {
+    navigate('/');
+  }
+
+  const handleCreateClick = () => {
+    navigate('/create');
+  }
+
+  const handleProfileClick = () => {
+    navigate('/profile');
+  };
   
   // Function to handle liking a wave
   const handleLike = (id) => {
@@ -110,36 +85,49 @@ const HomePage = () => {
   };
   
   return (
-    <Flex 
-      direction="column" 
-      w={{ base: "100%", md: isNavbarOpen ? "calc(100vw - 240px)" : "calc(100vw - 90px)" }}
-      transition="width 0.2s"
-      bg={isDark ? '#121212' : 'white'}
-      overflow="hidden"
-      position="relative"
-      h="100vh"
+    <Box
+      width="100vw"
+      ml={isMobile ? 0 : isNavbarOpen ? "-240px" : "-90px"}
+      pl={isMobile ? 0 : isNavbarOpen ? "240px" : "90px"}
+      transition="all 0.2s"
+      overflowX="hidden"
     >
-      {/* Top Navigation */}
       <Flex 
-        as="nav" 
-        align="center" 
-        justify="space-between" 
-        wrap="wrap" 
-        padding="1rem"
-        bg={isDark ? "#121212" : "white"}
-        color={isDark ? "white" : "black"}
-        borderBottom="1px solid"
-        borderColor={isDark ? "gray.700" : "gray.200"}
-        position="sticky"
-        top="0"
-        zIndex="10"
+        direction="column" 
+        w="100%"
+        bg={isDark ? '#121212' : 'white'}
+        minH="100vh"
+        pb={isMobile ? "80px" : 0} // Add bottom padding on mobile for navbar
       >
-        <Heading as="h1" size="lg" letterSpacing="tight" fontWeight="bold">
-          Wavely
-        </Heading>
+        {/* Top Navigation */}
+        <Flex 
+          as="nav" 
+          align="center" 
+          justify="space-between" 
+          wrap="wrap" 
+          padding="1rem"
+          bg={isDark ? "#121212" : "white"}
+          color={isDark ? "white" : "black"}
+          borderBottom="1px solid"
+          borderColor={isDark ? "gray.700" : "gray.200"}
+          position="sticky"
+          top="0"
+          zIndex="10"
+        >
+        <HStack spacing={2}>
+          <Image
+            src="/Wavely-Logo.png"
+            alt="Wavely Logo"
+            height="30px"
+            width="auto"
+          />
+          <Heading as="h1" size="lg" letterSpacing="tight" fontWeight="bold">
+            Wavely
+          </Heading>
+        </HStack>
         
         <Input
-          placeholder="Search waves, riders, beaches..."
+          placeholder="Search..."
           width={{ base: "100%", md: "300px" }}
           mx={{ base: 0, md: 4 }}
           my={{ base: 2, md: 0 }}
@@ -154,6 +142,7 @@ const HomePage = () => {
             aria-label="Home"
             icon={<FiHome />}
             variant="ghost"
+            onClick={handleHomeClick}
           />
           <IconButton
             aria-label="Explore"
@@ -164,12 +153,14 @@ const HomePage = () => {
             aria-label="New Post"
             icon={<FiPlusSquare />}
             variant="ghost"
+            onClick={handleCreateClick}
           />
           <Avatar 
             size="sm" 
             src={userData.profileImage}
             name={userData.displayName}
             cursor="pointer"
+            onClick={handleProfileClick}
           />
         </HStack>
       </Flex>
@@ -183,7 +174,7 @@ const HomePage = () => {
           'scrollbarWidth': 'none',
           '-ms-overflow-style': 'none',
         }}
-        bg={isDark ? "#121212" : "gray.100"}
+        bg={isDark ? "#121212" : "white"}
         p={4}
       >
         {/* Main Content */}
@@ -232,7 +223,7 @@ const HomePage = () => {
                   </VStack>
                 </HStack>
                 
-                <Button colorScheme="blue" size="sm" width="full">
+                <Button colorScheme="blue" size="sm" width="full" onClick={handleProfileClick}>
                   View Profile
                 </Button>
               </VStack>
@@ -241,114 +232,13 @@ const HomePage = () => {
             {/* Center Feed - Friend Waves */}
             <VStack spacing={6} align="stretch">
               {waves.map((wave) => (
-                <Box 
+                <WaveCard 
                   key={wave.id}
-                  bg={isDark ? "#1A1A1A" : "white"}
-                  borderRadius="lg"
-                  boxShadow="md"
-                  overflow="hidden"
-                >
-                  {/* Wave Header */}
-                  <Flex p={4} align="center" justify="space-between">
-                    <HStack>
-                      <Avatar 
-                        size="md" 
-                        src={wave.profileImage} 
-                        name={wave.displayName}
-                      />
-                      <VStack align="start" spacing={0}>
-                        <Text fontWeight="bold">{wave.displayName}</Text>
-                        <Text fontSize="sm" color="gray.500">@{wave.username}</Text>
-                      </VStack>
-                    </HStack>
-                    <HStack>
-                      <Text fontSize="sm" color="gray.500">{wave.timestamp}</Text>
-                      <IconButton
-                        aria-label="More options"
-                        icon={<FiMoreHorizontal />}
-                        variant="ghost"
-                        size="sm"
-                      />
-                    </HStack>
-                  </Flex>
-                  
-                  {/* Wave Content */}
-                  <Box px={4} pb={3}>
-                    <Text>{wave.content}</Text>
-                  </Box>
-                  
-                  {/* Wave Image */}
-                  <Image 
-                    src={wave.image} 
-                    alt="Wave content"
-                    width="100%"
-                    objectFit="cover"
-                  />
-                  
-                  {/* Wave Rating */}
-                  <Flex 
-                    bg={isDark ? "blue.900" : "blue.50"} 
-                    p={2} 
-                    align="center" 
-                    justify="center"
-                    borderBottom="1px solid"
-                    borderColor={isDark ? "blue.800" : "blue.100"}
-                  >
-                    <HStack>
-                      <Icon as={FiStar} color="yellow.400" />
-                      <Text fontWeight="bold">Wave Rating: {wave.rating}/5.0</Text>
-                    </HStack>
-                  </Flex>
-                  
-                  {/* Wave Stats */}
-                  <Flex p={4} justify="space-between" align="center">
-                    <HStack spacing={6}>
-                      <HStack spacing={1} cursor="pointer" onClick={() => handleLike(wave.id)}>
-                        <Icon as={FiHeart} color={isDark ? "pink.200" : "pink.500"} />
-                        <Text>{wave.likes}</Text>
-                      </HStack>
-                      <HStack spacing={1}>
-                        <Icon as={FiMessageCircle} color={isDark ? "blue.200" : "blue.500"} />
-                        <Text>{wave.comments}</Text>
-                      </HStack>
-                      <HStack spacing={1}>
-                        <Icon as={FiEye} color="gray.500" />
-                        <Text>{wave.views}</Text>
-                      </HStack>
-                    </HStack>
-                    <IconButton
-                      aria-label="Save post"
-                      icon={<FiSave />}
-                      variant="ghost"
-                      size="sm"
-                    />
-                  </Flex>
-                  
-                  {/* Comment Input */}
-                  <Flex px={4} pb={4} align="center">
-                    <Avatar 
-                      size="sm" 
-                      mr={2}
-                      src={userData.profileImage} 
-                      name={userData.displayName}
-                    />
-                    <Input 
-                      placeholder="Add a comment..." 
-                      size="sm"
-                      bg={isDark ? "gray.800" : "gray.100"}
-                      border="none"
-                      borderRadius="full"
-                    />
-                    <Button 
-                      ml={2}
-                      size="sm"
-                      colorScheme="blue"
-                      borderRadius="full"
-                    >
-                      Post
-                    </Button>
-                  </Flex>
-                </Box>
+                  wave={wave}
+                  currentUser={userData}
+                  onLike={() => likeWave(wave.id)}
+                  onDelete={() => deleteWave(wave.id)}
+                />
               ))}
             </VStack>
             
@@ -392,7 +282,7 @@ const HomePage = () => {
                 
                 <Divider />
                 
-                <Heading size="md" mt={2}>Friends Online</Heading>
+                <Heading size="md" mt={2}>Friends</Heading>
                 
                 <HStack>
                   <Avatar size="sm" src="/api/placeholder/50/50" name="Friend 1" />
@@ -416,8 +306,9 @@ const HomePage = () => {
             </Box>
           </Grid>
         </Flex>
-      </Box>
-    </Flex>
+        </Box>
+      </Flex>
+    </Box>
   );
 };
 

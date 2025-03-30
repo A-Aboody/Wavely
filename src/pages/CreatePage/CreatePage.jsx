@@ -1,4 +1,4 @@
-import React, { useState, useRef } from 'react';
+import React, { useEffect, useState, useRef } from 'react';
 import {
   Box,
   VStack,
@@ -30,6 +30,7 @@ import {
 } from '@chakra-ui/react';
 import { FiUpload, FiX, FiImage, FiVideo, FiMusic, FiStar } from 'react-icons/fi';
 import { useNavbar } from "../../context/NavbarContext";
+import { useWaves } from '../../context/WaveContext';
 
 const CreatePage = () => {
   const [selectedFiles, setSelectedFiles] = useState([]);
@@ -42,6 +43,26 @@ const CreatePage = () => {
   const { isNavbarOpen } = useNavbar();
   const { colorMode } = useColorMode();
   const toast = useToast();
+  const { addWave } = useWaves();
+  const [isMobile, setIsMobile] = useState(window.innerWidth < 768);
+
+  useEffect(() => {
+    const handleResize = () => {
+      setIsMobile(window.innerWidth < 768);
+    };
+
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, []);
+
+  const [profileData] = useState(() => {
+    const savedData = localStorage.getItem('profileData');
+    return savedData ? JSON.parse(savedData) : {
+      username: 'DefaultUser',
+      displayName: 'Default User',
+      profileImage: '/api/placeholder/200/200'
+    };
+  });
 
   const getAcceptedFileTypes = () => {
     switch (mediaType) {
@@ -132,25 +153,63 @@ const CreatePage = () => {
     setPreviewUrls(newPreviewUrls);
   };
 
+  const formatTimestamp = (date) => {
+    const days = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+    const d = new Date(date);
+    const dayName = days[d.getDay()];
+    const hours = d.getHours();
+    const minutes = d.getMinutes().toString().padStart(2, '0');
+    const period = hours >= 12 ? 'p.m.' : 'a.m.';
+    const formattedHours = hours % 12 || 12;
+    
+    return `${dayName} ${formattedHours}:${minutes} ${period}`;
+  };
+
   const handleSubmit = (event) => {
     event.preventDefault();
     
-    console.log({
-      mediaType,
-      filesCount: selectedFiles.length,
-      enableRating,
-      ratingScale,
-      ratingValue: enableRating ? ratingValue : "Not rated"
-    });
+    const formData = new FormData(event.target);
+    const title = formData.get('title');
+    const description = formData.get('description');
+    const category = formData.get('category') || formData.get('genre');
+
+    const now = new Date();
     
-    // Add your upload logic here
+    // Create the wave data object
+    const waveData = {
+      username: profileData.username,
+      displayName: profileData.displayName,
+      profileImage: profileData.profileImage,
+      content: description,
+      image: previewUrls[0] || "/Wavely-Logo.png",
+      mediaType: mediaType,
+      title: title,
+      category: category,
+      rating: enableRating ? parseFloat(ratingValue) : null,
+      ratingScale: enableRating ? parseInt(ratingScale) : null,
+      timestamp: formatTimestamp(now),
+      createdAt: now.toISOString(),
+    };
+    
+    // Add the wave using context
+    const waveId = addWave(waveData);
+    
+    // Show success message
     toast({
-      title: "Upload successful",
-      description: `Your ${mediaType}${selectedFiles.length > 1 ? 's have' : ' has'} been uploaded${enableRating ? ` with a rating of ${ratingValue}/${ratingScale}` : ''}`,
+      title: "Wave created!",
+      description: "Your post has been shared with the community",
       status: "success",
       duration: 3000,
       isClosable: true,
     });
+    
+    // Reset form after submission
+    setSelectedFiles([]);
+    setPreviewUrls([]);
+    setMediaType('image');
+    setEnableRating(false);
+    setRatingValue('0');
+    event.target.reset();
   };
 
   const changeMediaType = (type) => {
@@ -368,20 +427,27 @@ const CreatePage = () => {
   };
 
   return (
-    <Flex
-      w={{ base: "100%", md: isNavbarOpen ? "calc(100vw - 240px)" : "calc(100vw - 90px)" }}
-      p={8}
-      transition="width 0.2s"
+    <Box
+      width="100vw"
+      ml={isMobile ? 0 : isNavbarOpen ? "-240px" : "-90px"}
+      pl={isMobile ? 0 : isNavbarOpen ? "240px" : "90px"}
+      transition="all 0.2s"
+      overflowX="hidden"
     >
-      <Box
+      <Flex
         w="100%"
-        maxW="1200px"
-        mx="auto"
-        bg={colorMode === 'dark' ? '#121212' : 'white'}
-        borderRadius="lg"
         p={8}
-        boxShadow="lg"
+        pb={isMobile ? "80px" : 8} // Add bottom padding on mobile for navbar
       >
+        <Box
+          w="100%"
+          maxW="1200px"
+          mx="auto"
+          bg={colorMode === 'dark' ? '#121212' : 'white'}
+          borderRadius="lg"
+          p={8}
+          boxShadow="lg"
+        >
         <VStack spacing={8} align="stretch">
           <Heading size="lg" color={colorMode === 'light' ? 'gray.800' : 'white'}>
             Post A Wave!
@@ -453,7 +519,8 @@ const CreatePage = () => {
                     <FormControl>
                       <FormLabel color={colorMode === 'light' ? 'gray.700' : 'white'}>Title</FormLabel>
                       <Input
-                        placeholder="Enter a title for your images"
+                        name="title"  // Add name attribute
+                        placeholder={`Enter a title for your ${mediaType}`}
                         size="lg"
                         bg={colorMode === 'light' ? 'white' : 'whiteAlpha.50'}
                       />
@@ -462,6 +529,7 @@ const CreatePage = () => {
                     <FormControl>
                       <FormLabel color={colorMode === 'light' ? 'gray.700' : 'white'}>Description</FormLabel>
                       <Textarea
+                        name="description"  // Add name attribute
                         placeholder="Enter a description"
                         size="lg"
                         bg={colorMode === 'light' ? 'white' : 'whiteAlpha.50'}
@@ -469,9 +537,12 @@ const CreatePage = () => {
                     </FormControl>
 
                     <FormControl>
-                      <FormLabel color={colorMode === 'light' ? 'gray.700' : 'white'}>Category</FormLabel>
+                      <FormLabel color={colorMode === 'light' ? 'gray.700' : 'white'}>
+                        {mediaType === 'audio' ? 'Genre' : 'Category'}
+                      </FormLabel>
                       <Select
-                        placeholder="Select category"
+                        name={mediaType === 'audio' ? 'genre' : 'category'}  // Add name attribute
+                        placeholder={`Select ${mediaType === 'audio' ? 'genre' : 'category'}`}
                         size="lg"
                         bg={colorMode === 'light' ? 'white' : 'whiteAlpha.50'}
                       >
@@ -678,8 +749,9 @@ const CreatePage = () => {
             </TabPanels>
           </Tabs>
         </VStack>
-      </Box>
-    </Flex>
+        </Box>
+      </Flex>
+    </Box>
   );
 };
 

@@ -1,4 +1,5 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import {
   Box,
   Flex,
@@ -22,37 +23,52 @@ import {
 } from '@chakra-ui/react';
 import { FiImage, FiVideo, FiMusic, FiStar, FiHeart, FiMessageCircle, FiEye } from 'react-icons/fi';
 import { useNavbar } from "../../context/NavbarContext";
+import { useWaves } from '../../context/WaveContext';
 
 const UploadsPage = () => {
   const [currentTab, setCurrentTab] = useState(0);
   const { isNavbarOpen } = useNavbar();
   const { colorMode } = useColorMode();
+  const { waves } = useWaves();
+  const [profileData, setProfileData] = useState(null);
+  const navigate = useNavigate();
+  const [isMobile, setIsMobile] = useState(window.innerWidth < 768);
 
-  // Sample data for uploads
-  const uploads = [
-    { id: 1, type: 'image', thumbnail: '/api/placeholder/300/200', title: 'Mountain Scenery', views: 171, likes: 24, comments: 5 },
-    { id: 2, type: 'video', thumbnail: '/api/placeholder/300/200', title: 'Summer Beach', views: 253, likes: 42, comments: 12 },
-    { id: 3, type: 'image', thumbnail: '/api/placeholder/300/200', title: 'City Sunset', views: 198, likes: 30, comments: 8 },
-    { id: 4, type: 'audio', thumbnail: '/api/placeholder/300/200', title: 'Morning Melody', views: 105, likes: 18, comments: 3 },
-    { id: 5, type: 'video', thumbnail: '/api/placeholder/300/200', title: 'Forest Walk', views: 312, likes: 56, comments: 14 },
-    { id: 6, type: 'image', thumbnail: '/api/placeholder/300/200', title: 'Night Sky', views: 287, likes: 45, comments: 10 }
-  ];
+  const handleUploadClick = () => {
+    navigate('/create');
+  }
 
-  // Sample data for tidal waves (collections)
-  const tidalWaves = [
-    { id: 1, title: 'Summer Vibes', items: 5, thumbnail: '/api/placeholder/300/200' },
-    { id: 2, title: 'Urban Photography', items: 3, thumbnail: '/api/placeholder/300/200' },
-    { id: 3, title: 'Nature Sounds', items: 7, thumbnail: '/api/placeholder/300/200' },
-    { id: 4, title: 'Travel Memories', items: 4, thumbnail: '/api/placeholder/300/200' }
-  ];
+  // Listen for window resize events
+  useEffect(() => {
+    const handleResize = () => {
+      setIsMobile(window.innerWidth < 768);
+    };
 
-  // Sample ratings data
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, []);
+
+  // Load profile data from localStorage
+  useEffect(() => {
+    const savedData = localStorage.getItem('profileData');
+    if (savedData) {
+      setProfileData(JSON.parse(savedData));
+    }
+  }, []);
+
+  // Get user's uploads from waves
+  const userUploads = waves.filter(wave => wave.username === (profileData?.username || ''));
+  
+  // Get user's rated waves (with ratings)
+  const ratedWaves = waves.filter(wave => wave.rating !== null && wave.username === (profileData?.username || ''));
+
+  // Calculate ratings data
   const ratingsData = [
-    { stars: 5, count: 24 },
-    { stars: 4, count: 18 },
-    { stars: 3, count: 7 },
-    { stars: 2, count: 3 },
-    { stars: 1, count: 1 }
+    { stars: 5, count: ratedWaves.filter(wave => Math.round(wave.rating) === 5).length },
+    { stars: 4, count: ratedWaves.filter(wave => Math.round(wave.rating) === 4).length },
+    { stars: 3, count: ratedWaves.filter(wave => Math.round(wave.rating) === 3).length },
+    { stars: 2, count: ratedWaves.filter(wave => Math.round(wave.rating) === 2).length },
+    { stars: 1, count: ratedWaves.filter(wave => Math.round(wave.rating) === 1).length }
   ];
 
   const getTotalRatings = () => {
@@ -60,9 +76,8 @@ const UploadsPage = () => {
   };
 
   const getAverageRating = () => {
-    const totalStars = ratingsData.reduce((total, rating) => total + (rating.stars * rating.count), 0);
-    const totalRatings = getTotalRatings();
-    return totalRatings > 0 ? (totalStars / totalRatings).toFixed(1) : "N/A";
+    const totalStars = ratedWaves.reduce((total, wave) => total + wave.rating, 0);
+    return ratedWaves.length > 0 ? (totalStars / ratedWaves.length).toFixed(1) : "N/A";
   };
 
   const getTypeIcon = (type) => {
@@ -81,13 +96,13 @@ const UploadsPage = () => {
   const renderMediaGrid = (mediaItems) => {
     return (
       <Grid 
-      templateColumns={{ 
+        templateColumns={{ 
           base: "1fr", 
           sm: "repeat(2, 1fr)", 
           md: "repeat(3, 1fr)", 
           lg: "repeat(4, 1fr)",
-          xl: "repeat(5, 1fr)", // Add more columns for extra large screens
-          "2xl": "repeat(6, 1fr)" // Add even more columns for 2xl screens
+          xl: "repeat(5, 1fr)",
+          "2xl": "repeat(6, 1fr)"
         }}        
         gap={6}
         width="100%"
@@ -104,7 +119,7 @@ const UploadsPage = () => {
           >
             <Box position="relative">
               <Image 
-                src={item.thumbnail} 
+                src={item.image || item.thumbnail} 
                 alt={item.title}
                 width="100%"
                 height="180px"
@@ -119,34 +134,44 @@ const UploadsPage = () => {
                 borderRadius="md"
                 p={1}
               >
-                <Icon as={getTypeIcon(item.type)} />
+                <Icon as={getTypeIcon(item.mediaType || item.type)} />
               </Box>
+              {item.rating && (
+                <Box 
+                  position="absolute" 
+                  bottom="10px" 
+                  left="10px"
+                  bg="rgba(0,0,0,0.6)"
+                  color="white"
+                  borderRadius="md"
+                  px={2}
+                  py={1}
+                >
+                  <HStack spacing={1}>
+                    <Icon as={FiStar} color="yellow.400" />
+                    <Text fontSize="sm">{item.rating.toFixed(1)}</Text>
+                  </HStack>
+                </Box>
+              )}
             </Box>
             <Box p={4}>
               <Text fontWeight="bold" fontSize="md" noOfLines={1}>
                 {item.title}
               </Text>
-              {item.views !== undefined && (
-                <HStack mt={2} spacing={4} color={colorMode === 'dark' ? 'gray.300' : 'gray.600'}>
-                  <HStack spacing={1}>
-                    <Icon as={FiEye} />
-                    <Text fontSize="sm">{item.views}</Text>
-                  </HStack>
-                  <HStack spacing={1}>
-                    <Icon as={FiHeart} />
-                    <Text fontSize="sm">{item.likes}</Text>
-                  </HStack>
-                  <HStack spacing={1}>
-                    <Icon as={FiMessageCircle} />
-                    <Text fontSize="sm">{item.comments}</Text>
-                  </HStack>
+              <HStack mt={2} spacing={4} color={colorMode === 'dark' ? 'gray.300' : 'gray.600'}>
+                <HStack spacing={1}>
+                  <Icon as={FiEye} />
+                  <Text fontSize="sm">{item.views}</Text>
                 </HStack>
-              )}
-              {item.items !== undefined && (
-                <HStack mt={2}>
-                  <Badge colorScheme="blue">{item.items} items</Badge>
+                <HStack spacing={1}>
+                  <Icon as={FiHeart} />
+                  <Text fontSize="sm">{item.likes}</Text>
                 </HStack>
-              )}
+                <HStack spacing={1}>
+                  <Icon as={FiMessageCircle} />
+                  <Text fontSize="sm">{item.comments}</Text>
+                </HStack>
+              </HStack>
             </Box>
           </Box>
         ))}
@@ -168,7 +193,7 @@ const UploadsPage = () => {
       >
         <VStack align="stretch" spacing={5}>
           <Flex justify="space-between" align="center">
-            <Heading size="md">Ratings Overview</Heading>
+            <Heading size="md">Your Ratings</Heading>
             <HStack>
               <Icon as={FiStar} color="yellow.400" />
               <Text fontWeight="bold">{getAverageRating()}</Text>
@@ -196,32 +221,61 @@ const UploadsPage = () => {
               </HStack>
             ))}
           </VStack>
+
+          <Divider mt={6} />
+
+          <Heading size="md" mt={6}>Your Rated Content</Heading>
+          {ratedWaves.length > 0 ? (
+            renderMediaGrid(ratedWaves)
+          ) : (
+            <Text color={colorMode === 'dark' ? 'gray.400' : 'gray.500'} mt={4}>
+              You haven't rated any content yet.
+            </Text>
+          )}
         </VStack>
       </Box>
     );
   };
 
   return (
-    <Flex
-      w={{ base: "100%", md: isNavbarOpen ? "calc(100vw - 240px)" : "calc(100vw - 90px)" }}
-      p={8}
-      transition="width 0.2s"
+    <Box
+      width="100vw"
+      ml={isMobile ? 0 : isNavbarOpen ? "-240px" : "-90px"}
+      pl={isMobile ? 0 : isNavbarOpen ? "240px" : "90px"}
+      transition="all 0.2s"
       overflowX="hidden"
     >
+      {/* Banner Section */}
+      {profileData?.bannerImage && (
+        <Box 
+          width="100%"
+          height="200px"
+          overflow="hidden"
+        >
+          <Image 
+            src={profileData.bannerImage}
+            alt="Profile banner"
+            width="100%"
+            height="100%"
+            objectFit="cover"
+          />
+        </Box>
+      )}
+
       <Box
         w="100%"
         maxW="100%"
         mx="auto"
         bg={colorMode === 'dark' ? '#121212' : 'gray.50'}
-        borderRadius="lg"
         p={6}
+        pb={isMobile ? "80px" : 6} // Add bottom padding on mobile for the navbar
       >
         <VStack spacing={8} align="stretch">
           <Flex justify="space-between" align="center">
             <Heading size="lg" color={colorMode === 'light' ? 'gray.800' : 'white'}>
               My Uploads
             </Heading>
-            <Button colorScheme="blue">Upload New</Button>
+            <Button onClick={handleUploadClick} colorScheme="blue">Upload New</Button>
           </Flex>
 
           <Tabs 
@@ -238,27 +292,26 @@ const UploadsPage = () => {
               <Tab _selected={{ color: "white", bg: "blue.500" }}>
                 <HStack>
                   <Text>All Uploads</Text>
-                </HStack>
-              </Tab>
-              <Tab _selected={{ color: "white", bg: "blue.500" }}>
-                <HStack>
-                  <Text>Tidal Waves</Text>
+                  <Badge colorScheme="blue" ml={1}>{userUploads.length}</Badge>
                 </HStack>
               </Tab>
               <Tab _selected={{ color: "white", bg: "blue.500" }}>
                 <HStack>
                   <Text>Ratings</Text>
+                  <Badge colorScheme="yellow" ml={1}>{getTotalRatings()}</Badge>
                 </HStack>
               </Tab>
             </TabList>
             
             <TabPanels>
               <TabPanel p={4}>
-                {renderMediaGrid(uploads)}
-              </TabPanel>
-              
-              <TabPanel p={4}>
-                {renderMediaGrid(tidalWaves)}
+                {userUploads.length > 0 ? (
+                  renderMediaGrid(userUploads)
+                ) : (
+                  <Text color={colorMode === 'dark' ? 'gray.400' : 'gray.500'} textAlign="center" py={10}>
+                    You haven't uploaded any content yet.
+                  </Text>
+                )}
               </TabPanel>
               
               <TabPanel p={4}>
@@ -268,7 +321,7 @@ const UploadsPage = () => {
           </Tabs>
         </VStack>
       </Box>
-    </Flex>
+    </Box>
   );
 };
 
