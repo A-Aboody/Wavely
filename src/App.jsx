@@ -8,21 +8,24 @@ import SettingsPage from './pages/SettingsPage/SettingsPage';
 import PageLayout from './layouts/PageLayout/PageLayout';
 import { NavbarProvider } from './context/NavbarContext';
 import { WaveProvider } from './context/WaveContext';
+import { ProfileProvider } from './context/ProfileContext';
 
 function App() {
   return (
     <WaveProvider>
       <NavbarProvider>
-        <PageLayout>
-          <Routes>
-            <Route path='/' element={<HomePage />} />
-            <Route path='/create' element={<CreatePage />} />
-            <Route path='/profile' element={<ProfilePage />} />
-            <Route path='/uploads' element={<UploadsPage />} />
-            <Route path='/settings' element={<SettingsPage />} />
-            <Route path='/auth' element={<AuthPage />} />
-          </Routes>
-        </PageLayout>
+        <ProfileProvider>
+          <PageLayout>
+            <Routes>
+              <Route path='/' element={<HomePage />} />
+              <Route path='/create' element={<CreatePage />} />
+              <Route path='/profile' element={<ProfilePage />} />
+              <Route path='/uploads' element={<UploadsPage />} />
+              <Route path='/settings' element={<SettingsPage />} />
+              <Route path='/auth' element={<AuthPage />} />
+            </Routes>
+          </PageLayout>
+        </ProfileProvider>
       </NavbarProvider>
     </WaveProvider>
   );

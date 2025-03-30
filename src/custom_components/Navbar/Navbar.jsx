@@ -5,6 +5,8 @@ import { useNavbar } from "../../context/NavbarContext";
 import { useColorMode } from "@chakra-ui/react";
 import { useState, useEffect } from 'react';
 import { useLocation } from 'react-router-dom'; 
+import { useProfile } from '../../context/ProfileContext';
+import { memo } from 'react';
 
 const Navbar = () => {
   const { isNavbarOpen, setIsNavbarOpen } = useNavbar();
@@ -12,15 +14,7 @@ const Navbar = () => {
   const location = useLocation();
   const { isOpen, onOpen, onClose } = useDisclosure();
   const [isMobile, setIsMobile] = useState(window.innerWidth < 768);
-
-  const [profileData, setProfileData] = useState(() => {
-    const savedData = localStorage.getItem('profileData');
-    return savedData ? JSON.parse(savedData) : {
-      username: 'aa.a021',
-      displayName: 'adubla',
-      profileImage: '/api/placeholder/200/200'
-    };
-  });
+  const { profileData } = useProfile();
 
   // Reordered navigation items
   const navItems = [

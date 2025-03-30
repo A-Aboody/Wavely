@@ -1,4 +1,3 @@
-import React, { useState } from 'react';
 import {
   Box,
   Flex,
@@ -15,8 +14,8 @@ import {
   ModalOverlay,
   ModalContent,
   ModalHeader,
-  ModalBody,
   ModalCloseButton,
+  ModalBody,
   ModalFooter,
   FormControl,
   FormLabel,
@@ -29,6 +28,12 @@ import {
   Tab,
   TabPanels,
   TabPanel,
+  Tag,
+  Divider,
+  IconButton,
+  InputGroup,
+  InputRightElement,
+  Badge
 } from '@chakra-ui/react';
 import { 
   FiEdit, 
@@ -39,52 +44,45 @@ import {
   FiMessageCircle, 
   FiEye, 
   FiUsers,
-  FiUser
+  FiUser,
+  FiSend,
+  FiX,
+  FiMoreHorizontal,
+  FiTrash2,
+  FiStar
 } from 'react-icons/fi';
 import { useNavbar } from "../../context/NavbarContext";
 import { useWaves } from '../../context/WaveContext';
-import { useRef, useEffect } from 'react';
-import WaveCard from '../../custom_components/WaveCard/WaveCard';
+import { useProfile } from '../../context/ProfileContext';
+import { useRef, useEffect, useState } from 'react';
 
 const ProfilePage = () => {
+  const initialFocusRef = useRef();
+  const profileImageRef = useRef();
+  const bannerImageRef = useRef();
   const { isNavbarOpen } = useNavbar();
   const { colorMode } = useColorMode();
   const [activeTab, setActiveTab] = useState(0);
-  const profileImageRef = useRef(null);
-  const bannerImageRef = useRef(null);
-  const initialFocusRef = useRef(null);
-  const { waves, deleteWave, likeWave } = useWaves();
-  const [isMobile, setIsMobile] = useState(window.innerWidth < 768);
-
-  
-  // Modal disclosure completely isolated
+  const [selectedWave, setSelectedWave] = useState(null);
+  const [newComment, setNewComment] = useState('');
   const { isOpen, onOpen, onClose } = useDisclosure();
-  
-  // Load profile data from localStorage or use defaults
-  const [profileData, setProfileData] = useState(() => {
-    const savedData = localStorage.getItem('profileData');
-    return savedData ? JSON.parse(savedData) : {
-      username: 'aa.a021',
-      displayName: 'adubla',
-      bio: 'No bio yet.',
-      profileImage: '/api/placeholder/200/200',
-      bannerImage: '/api/placeholder/1200/300',
-      following: 15,
-      followers: 15,
-      likes: 10
-    };
-  });
+  const { 
+    isOpen: isWaveModalOpen, 
+    onOpen: onWaveModalOpen, 
+    onClose: onWaveModalClose 
+  } = useDisclosure();
+  const cancelRef = useRef();
+  const { waves, deleteWave, likeWave, addComment } = useWaves();
+  const [isMobile, setIsMobile] = useState(window.innerWidth < 768);
+  const { profileData, updateProfile } = useProfile();
 
   useEffect(() => {
-    const handleResize = () => {
-      setIsMobile(window.innerWidth < 768);
-    };
-
+    const handleResize = () => setIsMobile(window.innerWidth < 768);
     window.addEventListener('resize', handleResize);
     return () => window.removeEventListener('resize', handleResize);
   }, []);
 
-  // Form state kept completely separate from profileData
+  // Form state
   const [formData, setFormData] = useState({
     username: '',
     displayName: '',
@@ -93,7 +91,6 @@ const ProfilePage = () => {
     bannerImage: ''
   });
   
-  // Initialize form data ONLY when modal opens
   useEffect(() => {
     if (isOpen) {
       setFormData({
@@ -105,59 +102,199 @@ const ProfilePage = () => {
       });
     }
   }, [isOpen, profileData]);
-  
-  // Filter waves created by the current user
+
   const userWaves = waves.filter(wave => wave.username === profileData.username);
-  
-  // Sample data for user uploads
-  const uploads = [
-    { id: 1, type: 'video', thumbnail: '/api/placeholder/300/200', title: 'Mountain Village', views: 171, likes: 24, comments: 5 },
-    { id: 2, type: 'video', thumbnail: '/api/placeholder/300/200', title: 'Summer Beach', views: 253, likes: 42, comments: 12 },
-    { id: 3, type: 'image', thumbnail: '/api/placeholder/300/200', title: 'City Sunset', views: 198, likes: 30, comments: 8 },
-    { id: 4, type: 'audio', thumbnail: '/api/placeholder/300/200', title: 'Morning Melody', views: 105, likes: 18, comments: 3 },
-    { id: 5, type: 'video', thumbnail: '/api/placeholder/300/200', title: 'Forest Walk', views: 312, likes: 56, comments: 14 },
-    { id: 6, type: 'image', thumbnail: '/api/placeholder/300/200', title: 'Night Sky', views: 287, likes: 45, comments: 10 }
-  ];
-  
-  // Handle input changes in the edit form
-  const handleInputChange = (e) => {
-    const { name, value } = e.target;
-    setFormData(prevData => ({
-      ...prevData,
-      [name]: value
-    }));
+
+  const handleLike = (waveId) => {
+    likeWave(waveId);
+    // Update the selected wave to reflect changes
+    if (selectedWave && selectedWave.id === waveId) {
+      setSelectedWave(waves.find(w => w.id === waveId));
+    }
   };
 
-  // Handle file upload
+  const handleInputChange = (e) => {
+    const { name, value } = e.target;
+    setFormData(prev => ({ ...prev, [name]: value }));
+  };
+
   const handleFileUpload = (e, type) => {
     const file = e.target.files[0];
     if (file) {
       const reader = new FileReader();
       reader.onloadend = () => {
-        setFormData(prevData => ({
-          ...prevData,
-          [type]: reader.result
-        }));
+        setFormData(prev => ({ ...prev, [type]: reader.result }));
       };
       reader.readAsDataURL(file);
     }
   };
   
-  // Handle form submission - only updates profileData on explicit submit
   const handleSubmit = (e) => {
-    if (e) e.preventDefault();
-    
-    const updatedProfileData = {
-      ...profileData,
-      ...formData
-    };
-    
-    setProfileData(updatedProfileData);
-    localStorage.setItem('profileData', JSON.stringify(updatedProfileData));
-    
+    e.preventDefault();
+    updateProfile(formData); // Use the context update function
     onClose();
   };
+
+  const handleWaveClick = (wave) => {
+    setSelectedWave(wave);
+    onWaveModalOpen();
+  };
+
+  const formatTimestamp = (date) => {
+    const days = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+    const d = new Date(date);
+    const dayName = days[d.getDay()];
+    const hours = d.getHours();
+    const minutes = d.getMinutes().toString().padStart(2, '0');
+    const period = hours >= 12 ? 'p.m.' : 'a.m.';
+    const formattedHours = hours % 12 || 12;
+    
+    return `(${dayName} ${formattedHours}:${minutes} ${period})`;
+  };
+
+  useEffect(() => {
+    if (selectedWave) {
+      const updatedWave = waves.find(w => w.id === selectedWave.id);
+      if (updatedWave && JSON.stringify(updatedWave) !== JSON.stringify(selectedWave)) {
+        setSelectedWave(updatedWave);
+      }
+    }
+  }, [waves, selectedWave]);
+
+  const handleAddComment = () => {
+    if (newComment.trim() && selectedWave) {
+      const commentData = {
+        id: Date.now(),
+        username: profileData.username,
+        displayName: profileData.displayName,
+        profileImage: profileData.profileImage,
+        content: newComment,
+        timestamp: formatTimestamp(new Date())
+      };
+      
+      addComment(selectedWave.id, commentData);
+      setNewComment('');
+      
+      // Update the selected wave to reflect new comment
+      const updatedWave = waves.find(w => w.id === selectedWave.id);
+      if (updatedWave) {
+        setSelectedWave(updatedWave);
+      }
+    }
+  };
+
+  const renderWaveThumbnail = (wave) => {
+    return (
+      <Box 
+        key={wave.id}
+        borderRadius="lg" 
+        overflow="hidden"
+        bg={colorMode === 'dark' ? "#1a1a1a" : 'white'}
+        boxShadow="md"
+        borderWidth="1px"
+        borderColor={colorMode === 'dark' ? 'gray.700' : 'gray.200'}
+        cursor="pointer"
+        onClick={() => handleWaveClick(wave)}
+        transition="all 0.2s"
+        _hover={{ transform: 'scale(1.02)' }}
+      >
+        <Box position="relative">
+          {wave.mediaType === 'image' && (
+            <Image 
+              src={wave.image} 
+              alt={wave.title || 'Wave image'}
+              width="100%"
+              height="180px"
+              objectFit="cover"
+            />
+          )}
+          
+          {wave.mediaType === 'video' && (
+            <Box position="relative" height="180px">
+              <Image 
+                src={wave.image} 
+                alt={wave.title || 'Wave video thumbnail'}
+                width="100%"
+                height="100%"
+                objectFit="cover"
+              />
+              <Box 
+                position="absolute" 
+                top="50%" 
+                left="50%" 
+                transform="translate(-50%, -50%)"
+                bg="rgba(0,0,0,0.5)" 
+                borderRadius="full"
+                p={2}
+              >
+                <Icon as={FiVideo} color="white" boxSize={6} />
+              </Box>
+            </Box>
+          )}
+          
+          {wave.mediaType === 'audio' && (
+            <Flex 
+              height="180px" 
+              align="center" 
+              justify="center" 
+              bg={colorMode === 'dark' ? 'gray.700' : 'gray.100'}
+            >
+              <Icon as={FiMusic} boxSize={8} />
+            </Flex>
+          )}
   
+          {/* Type Icon */}
+          <Box 
+            position="absolute" 
+            top="10px" 
+            right="10px"
+            bg="rgba(0,0,0,0.6)"
+            color="white"
+            borderRadius="md"
+            p={1}
+          >
+            <Icon as={getTypeIcon(wave.mediaType)} />
+          </Box>
+          
+          {/* Rating Badge */}
+          {wave.rating && (
+            <Box 
+              position="absolute" 
+              bottom="10px" 
+              left="10px"
+              bg="rgba(0,0,0,0.6)"
+              color="white"
+              borderRadius="md"
+              px={2}
+              py={1}
+            >
+              <HStack spacing={1}>
+                <Icon as={FiStar} color="yellow.400" />
+                <Text fontSize="sm">{typeof wave.rating === 'number' ? wave.rating.toFixed(1) : wave.rating}</Text>
+              </HStack>
+            </Box>
+          )}
+        </Box>
+        
+        <Box p={4}>
+          <Text fontWeight="bold" noOfLines={1} mb={1}>
+            {wave.title || 'Untitled Wave'}
+          </Text>
+          <HStack spacing={4} color="gray.500">
+            <HStack spacing={1}>
+              <Icon as={FiHeart} />
+              <Text fontSize="sm">{wave.likes}</Text>
+            </HStack>
+            <HStack spacing={1}>
+              <Icon as={FiMessageCircle} />
+              <Text fontSize="sm">{wave.comments}</Text>
+            </HStack>
+          </HStack>
+        </Box>
+      </Box>
+    );
+  };
+
   const getTypeIcon = (type) => {
     switch (type) {
       case 'image':
@@ -170,76 +307,7 @@ const ProfilePage = () => {
         return FiImage;
     }
   };
-  
-  const renderUserUploads = (mediaItems) => {
-    return (
-      <Grid 
-        templateColumns={{ 
-          base: "1fr", 
-          sm: "repeat(2, 1fr)", 
-          md: "repeat(3, 1fr)",
-          lg: "repeat(4, 1fr)", 
-          xl: "repeat(5, 1fr)"  
-        }}  
-        gap={6}
-        width="100%"
-        mt={6}
-      >
-        {mediaItems.map((item) => (
-          <Box 
-            key={item.id}
-            borderRadius="lg" 
-            overflow="hidden"
-            bg={colorMode === 'dark' ? "#121212" : 'white'}
-            boxShadow="md"
-            transition="transform 0.3s"
-            _hover={{ transform: 'translateY(-5px)' }}
-          >
-            <Box position="relative">
-              <Image 
-                src={item.thumbnail} 
-                alt={item.title}
-                width="100%"
-                height="180px"
-                objectFit="cover"
-              />
-              <Box 
-                position="absolute" 
-                top="10px" 
-                right="10px"
-                bg="rgba(0,0,0,0.6)"
-                color="white"
-                borderRadius="md"
-                p={1}
-              >
-                <Icon as={getTypeIcon(item.type)} />
-              </Box>
-            </Box>
-            <Box p={4}>
-              <Text fontWeight="bold" fontSize="md" noOfLines={1}>
-                {item.title}
-              </Text>
-              <HStack mt={2} spacing={4} color={colorMode === 'dark' ? 'gray.300' : 'gray.600'}>
-                <HStack spacing={1}>
-                  <Icon as={FiEye} />
-                  <Text fontSize="sm">{item.views}</Text>
-                </HStack>
-                <HStack spacing={1}>
-                  <Icon as={FiHeart} />
-                  <Text fontSize="sm">{item.likes}</Text>
-                </HStack>
-                <HStack spacing={1}>
-                  <Icon as={FiMessageCircle} />
-                  <Text fontSize="sm">{item.comments}</Text>
-                </HStack>
-              </HStack>
-            </Box>
-          </Box>
-        ))}
-      </Grid>
-    );
-  };
-  
+
   return (
     <Box 
       w="100vw"
@@ -249,12 +317,7 @@ const ProfilePage = () => {
       overflowX="hidden"
     >
       {/* Banner Image */}
-      <Box 
-        position="relative" 
-        width="100%" 
-        height="250px"
-        overflow="hidden"
-      >
+      <Box position="relative" width="100%" height="250px" overflow="hidden">
         <Image 
           src={profileData.bannerImage} 
           alt="Profile Banner"
@@ -272,7 +335,7 @@ const ProfilePage = () => {
         mx="auto" 
         px={{ base: 4, md: 8 }}
         transform="translateY(-60px)"
-        pb={isMobile ? "80px" : 6} // Add bottom padding on mobile for the navbar
+        pb={isMobile ? "80px" : 6}
       >
         <Flex 
           direction={{ base: "column", md: "row" }} 
@@ -285,7 +348,6 @@ const ProfilePage = () => {
           pb={8}
           position="relative"
         >
-          {/* Profile Picture */}
           <Flex direction="column" alignItems={{ base: "center", md: "flex-start" }} mb={{ base: 6, md: 0 }}>
             <Avatar 
               src={profileData.profileImage} 
@@ -333,7 +395,6 @@ const ProfilePage = () => {
             </HStack>
           </Flex>
           
-          {/* Edit Profile Button */}
           <Button 
             leftIcon={<FiEdit />} 
             colorScheme="pink" 
@@ -359,98 +420,253 @@ const ProfilePage = () => {
           <Tabs isFitted colorScheme="blue" onChange={(index) => setActiveTab(index)}>
             <TabList>
               <Tab><HStack><Icon as={FiVideo} /><Text>Waves</Text></HStack></Tab>
-              <Tab><HStack><Icon as={FiImage} /><Text>Uploads</Text></HStack></Tab>
               <Tab><HStack><Icon as={FiHeart} /><Text>Liked</Text></HStack></Tab>
             </TabList>
             
             <TabPanels>
-            <TabPanel p={4}>
-              {userWaves.length > 0 ? (
-                <Grid
-                  templateColumns={{
-                    base: "1fr",
-                    sm: "repeat(2, 1fr)",
-                    md: "repeat(3, 1fr)",
-                    lg: "repeat(3, 1fr)"
-                  }}
-                  gap={4}
-                  width="100%"
-                >
-                  {userWaves.map((wave) => (
-                    <Box 
-                      key={wave.id} 
-                      borderRadius="lg" 
-                      overflow="hidden"
-                      bg={colorMode === 'dark' ? "#1a1a1a" : 'white'}
-                      boxShadow="md"
-                      borderWidth="1px"
-                      borderColor={colorMode === 'dark' ? 'gray.700' : 'gray.200'}
-                    >
-                      <WaveCard 
-                        wave={wave}
-                        currentUser={profileData}
-                        onLike={() => likeWave(wave.id)}
-                        onDelete={() => deleteWave(wave.id)}
-                        compactMode={true} // Add this prop to your WaveCard component
-                      />
-                    </Box>
-                  ))}
-                </Grid>
-              ) : (
-                <Box textAlign="center" py={10}>
-                  <Text fontSize="lg" color="gray.500">No waves posted yet</Text>
-                </Box>
-              )}
-            </TabPanel>
-            
-            <TabPanel p={4}>
-              {renderUserUploads(uploads)}
-            </TabPanel>
-            
-            <TabPanel p={4}>
-              {waves.filter(wave => wave.likes > 0).length > 0 ? (
-                <Grid
-                  templateColumns={{
-                    base: "1fr",
-                    sm: "repeat(2, 1fr)",
-                    md: "repeat(3, 1fr)",
-                    lg: "repeat(3, 1fr)"
-                  }}
-                  gap={4}
-                  width="100%"
-                >
-                  {waves
-                    .filter(wave => wave.likes > 0)
-                    .map((wave) => (
-                      <Box 
-                        key={wave.id} 
-                        borderRadius="lg" 
-                        overflow="hidden"
-                        bg={colorMode === 'dark' ? "#1a1a1a" : 'white'}
-                        boxShadow="md"
-                        borderWidth="1px"
-                        borderColor={colorMode === 'dark' ? 'gray.700' : 'gray.200'}
-                      >
-                        <WaveCard 
-                          wave={wave}
-                          currentUser={profileData}
-                          onLike={() => likeWave(wave.id)}
-                          onDelete={() => deleteWave(wave.id)}
-                          compactMode={true}
-                        />
-                      </Box>
-                    ))}
-                </Grid>
-              ) : (
-                <Box textAlign="center" py={10}>
-                  <Text fontSize="lg" color="gray.500">No liked waves yet</Text>
-                </Box>
-              )}
-            </TabPanel>
-          </TabPanels>
+              <TabPanel p={4}>
+                {userWaves.length > 0 ? (
+                  <Grid
+                    templateColumns={{
+                      base: "1fr",
+                      sm: "repeat(2, 1fr)",
+                      md: "repeat(3, 1fr)",
+                      lg: "repeat(4, 1fr)"
+                    }}
+                    gap={4}
+                    width="100%"
+                  >
+                    {userWaves.map(wave => renderWaveThumbnail(wave))}
+                  </Grid>
+                ) : (
+                  <Box textAlign="center" py={10}>
+                    <Text fontSize="lg" color="gray.500">No waves posted yet</Text>
+                  </Box>
+                )}
+              </TabPanel>
+              
+              <TabPanel p={4}>
+                {waves.filter(wave => wave.likes > 0).length > 0 ? (
+                  <Grid
+                    templateColumns={{
+                      base: "1fr",
+                      sm: "repeat(2, 1fr)",
+                      md: "repeat(3, 1fr)",
+                      lg: "repeat(4, 1fr)"
+                    }}
+                    gap={4}
+                    width="100%"
+                  >
+                    {waves
+                      .filter(wave => wave.likes > 0)
+                      .map(wave => renderWaveThumbnail(wave))}
+                  </Grid>
+                ) : (
+                  <Box textAlign="center" py={10}>
+                    <Text fontSize="lg" color="gray.500">No liked waves yet</Text>
+                  </Box>
+                )}
+              </TabPanel>
+            </TabPanels>
           </Tabs>
         </Box>
       </Flex>
+      
+      {/* Wave Detail Modal */}
+      {selectedWave && (
+        <Modal 
+          isOpen={isWaveModalOpen} 
+          onClose={onWaveModalClose}
+          size="6xl"
+          scrollBehavior="inside"
+        >
+          <ModalOverlay bg="blackAlpha.700" backdropFilter="blur(10px)" />
+          <ModalContent 
+            bg={colorMode === 'dark' ? "#121212" : 'white'}
+            borderRadius="xl"
+            maxH="90vh"
+          >
+          <ModalHeader>
+            <Flex justify="space-between" align="center">
+              <HStack spacing={4}>
+                <Avatar 
+                  src={selectedWave.profileImage} 
+                  name={selectedWave.displayName}
+                  size="sm"
+                />
+                <Box>
+                  <HStack spacing={2} align="center">
+                    <Text fontWeight="bold">{selectedWave.displayName}</Text>
+                    <Icon 
+                      as={getTypeIcon(selectedWave.mediaType)} 
+                      color="gray.500"
+                      boxSize={4}
+                    />
+                  </HStack>
+                  <Text fontSize="sm" color="gray.500">
+                    @{selectedWave.username} · {selectedWave.timestamp}
+                  </Text>
+                </Box>
+              </HStack>
+              <ModalCloseButton size="lg" />
+            </Flex>
+          </ModalHeader>
+            
+            <ModalBody>
+              <Flex direction={{ base: "column", md: "row" }} gap={6}>
+                {/* Media Section */}
+                <Box flex={1}>
+                  {selectedWave.mediaType === 'image' && (
+                    <Image 
+                      src={selectedWave.image} 
+                      alt={selectedWave.title || 'Wave image'}
+                      width="100%"
+                      maxH="60vh"
+                      objectFit="contain"
+                      borderRadius="md"
+                    />
+                  )}
+                  
+                  {selectedWave.mediaType === 'video' && (
+                    <Box
+                      as="video"
+                      src={selectedWave.mediaUrl || selectedWave.image}
+                      controls
+                      width="100%"
+                      maxH="60vh"
+                      borderRadius="md"
+                    />
+                  )}
+                  
+                  {selectedWave.mediaType === 'audio' && (
+                    <Flex
+                      width="100%"
+                      height="200px"
+                      align="center"
+                      justify="center"
+                      bg={colorMode === 'dark' ? 'gray.700' : 'gray.100'}
+                      borderRadius="md"
+                    >
+                      <Box width="90%">
+                        <audio 
+                          controls 
+                          src={selectedWave.mediaUrl || selectedWave.image} 
+                          style={{ width: '100%' }} 
+                        />
+                      </Box>
+                    </Flex>
+                  )}
+                  
+                  <HStack mt={4} spacing={4}>
+                    <Button
+                      leftIcon={<FiHeart />}
+                      variant="ghost"
+                      colorScheme={selectedWave.likes > 0 ? "red" : "gray"}
+                      onClick={() => handleLike(selectedWave.id)}
+                    >
+                      {selectedWave.likes} Likes
+                    </Button>
+                    
+                    {/* Rating Display */}
+                    {selectedWave.rating && (
+                      <Button
+                        leftIcon={<FiStar />}
+                        variant="ghost"
+                        colorScheme="yellow"
+                      >
+                        {typeof selectedWave.rating === 'number' ? selectedWave.rating.toFixed(1) : selectedWave.rating} Rating
+                      </Button>
+                    )}
+                    
+                    {selectedWave.category && (
+                      <Tag colorScheme="blue" size="lg">
+                        {selectedWave.category}
+                      </Tag>
+                    )}
+                  </HStack>
+                  
+                  <Box mt={4}>
+                    <Heading size="md" mb={2}>{selectedWave.title}</Heading>
+                    <Text>{selectedWave.content}</Text>
+                  </Box>
+                </Box>
+                
+                {/* Comments Section */}
+                <Box 
+                  flex={{ base: "1", md: "0 0 350px" }}
+                  borderLeft={{ md: "1px solid" }}
+                  borderColor={{ md: colorMode === 'dark' ? "gray.700" : "gray.200" }}
+                  pl={{ md: 6 }}
+                  pt={{ base: 6, md: 0 }}
+                >
+                  <Heading size="md" mb={4}>Comments ({selectedWave.comments})</Heading>
+                  
+                  <Box mb={4}>
+                    <InputGroup>
+                      <Input
+                        placeholder="Add a comment..."
+                        value={newComment}
+                        onChange={(e) => setNewComment(e.target.value)}
+                        pr="4.5rem"
+                      />
+                      <InputRightElement width="4.5rem">
+                        <IconButton
+                          icon={<FiSend />}
+                          h="1.75rem"
+                          size="sm"
+                          onClick={handleAddComment}
+                          isDisabled={!newComment.trim()}
+                        />
+                      </InputRightElement>
+                    </InputGroup>
+                  </Box>
+                  
+                  <VStack 
+                    spacing={4} 
+                    align="stretch"
+                    maxH={{ base: "300px", md: "60vh" }}
+                    overflowY="auto"
+                    pr={2}
+                  >
+                    {selectedWave.commentsList?.length > 0 ? (
+                      selectedWave.commentsList.map(comment => (
+                        <Box 
+                          key={comment.id}
+                          p={3}
+                          bg={colorMode === 'dark' ? "gray.800" : "gray.50"}
+                          borderRadius="md"
+                        >
+                          <Flex justify="space-between" align="center" mb={2}>
+                            <HStack>
+                              <Avatar 
+                                src={comment.profileImage} 
+                                name={comment.displayName}
+                                size="sm"
+                              />
+                              <Text fontWeight="bold">{comment.displayName}</Text>
+                            </HStack>
+                            <Text fontSize="xs" color="gray.500">
+                              {comment.timestamp}
+                            </Text>
+                          </Flex>
+                          <Text>{comment.content}</Text>
+                        </Box>
+                      ))
+                    ) : (
+                      <Text color="gray.500" textAlign="center" py={4}>
+                        No comments yet
+                      </Text>
+                    )}
+                  </VStack>
+                </Box>
+              </Flex>
+            </ModalBody>
+            
+            <ModalFooter>
+            </ModalFooter>
+          </ModalContent>
+        </Modal>
+      )}
       
       {/* Edit Profile Modal */}
       <Modal 
@@ -535,9 +751,9 @@ const ProfilePage = () => {
                     <Avatar
                       size="xl"
                       src={formData.profileImage}
-                      name={formData.displayName}
+                      name={profileData.displayName} // Use profileData instead of formData
                       border="3px solid"
-                      borderColor={colorMode === 'dark' ? "blue.400" : "blue.500"}
+                      borderColor={colorMode === 'dark' ? "gray.700" : "gray.200"}
                     />
                     <Button
                       type="button"
