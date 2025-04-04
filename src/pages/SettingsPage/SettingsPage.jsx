@@ -119,7 +119,7 @@ const SettingsPage = () => {
                 flex={1}
                 h="100vh"
                 p={{ base: 3, md: 6 }}
-                bg={colorMode === 'dark' ? "#333e4b" : "gray.100"}
+                bg={colorMode === 'dark' ? "gray.900" : "gray.100"}
                 position="relative"
                 overflow="hidden"
             >

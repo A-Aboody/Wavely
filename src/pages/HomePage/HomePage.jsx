@@ -13,45 +13,37 @@ import {
   Image,
   Icon,
   Input,
+  InputGroup,
+  InputLeftElement,
   useColorMode,
   Divider,
   IconButton,
+  Spinner,
+  Tag
 } from '@chakra-ui/react';
 import { 
-  FiHeart, 
-  FiMessageCircle, 
-  FiEye,
-  FiSave,
-  FiMoreHorizontal,
-  FiUser,
-  FiUsers,
   FiHome,
   FiCompass,
   FiPlusSquare,
-  FiStar
+  FiStar,
+  FiSearch,
+  FiUsers
 } from 'react-icons/fi';
 import { useNavbar } from "../../context/NavbarContext";
-import WaveCard from '../../custom_components/WaveCard/WaveCard';
+import { useUser } from '../../context/UserContext';
 import { useWaves } from '../../context/WaveContext';
+import WaveCard from '../../custom_components/WaveCard/WaveCard';
 
 const HomePage = () => {
   const { colorMode } = useColorMode();
   const isDark = colorMode === 'dark';
   const { isNavbarOpen } = useNavbar();
   const navigate = useNavigate();
-  const { waves, deleteWave } = useWaves();
+  const { currentUser } = useUser();
+  const { waves, loading: wavesLoading } = useWaves();
   const [isMobile, setIsMobile] = useState(window.innerWidth < 768);
+  const [searchQuery, setSearchQuery] = useState('');
   
-  // Sample user data
-  const [userData] = useState(() => {
-    const savedData = localStorage.getItem('profileData');
-    return savedData ? JSON.parse(savedData) : {
-      username: 'DefaultUser',
-      displayName: 'Default',
-      profileImage: '/api/placeholder/200/200'
-    };
-  });
-
   useEffect(() => {
     const handleResize = () => {
       setIsMobile(window.innerWidth < 768);
@@ -61,29 +53,18 @@ const HomePage = () => {
     return () => window.removeEventListener('resize', handleResize);
   }, []);
   
-  const handleDeleteWave = (id) => {
-    deleteWave(id); // This will trigger a context update
-  };
+  const handleHomeClick = () => navigate('/');
+  const handleCreateClick = () => navigate('/create');
+  const handleProfileClick = () => navigate(`/profile/${currentUser?.uid}`);
 
-  const handleHomeClick = () => {
-    navigate('/');
-  }
+  const filteredWaves = waves.filter(wave => 
+    wave.title?.toLowerCase().includes(searchQuery.toLowerCase()) ||
+    wave.content?.toLowerCase().includes(searchQuery.toLowerCase()) ||
+    wave.category?.toLowerCase().includes(searchQuery.toLowerCase())
+  );
 
-  const handleCreateClick = () => {
-    navigate('/create');
-  }
+  const userWavesCount = waves.filter(w => w.userId === currentUser?.uid).length;
 
-  const handleProfileClick = () => {
-    navigate('/profile');
-  };
-  
-  // Function to handle liking a wave
-  const handleLike = (id) => {
-    setWaves(waves.map(wave => 
-      wave.id === id ? {...wave, likes: wave.likes + 1} : wave
-    ));
-  };
-  
   return (
     <Box
       width="100vw"
@@ -97,7 +78,7 @@ const HomePage = () => {
         w="100%"
         bg={isDark ? '#121212' : 'white'}
         minH="100vh"
-        pb={isMobile ? "80px" : 0} // Add bottom padding on mobile for navbar
+        pb={isMobile ? "80px" : 0}
       >
         {/* Top Navigation */}
         <Flex 
@@ -114,198 +95,250 @@ const HomePage = () => {
           top="0"
           zIndex="10"
         >
-        <HStack spacing={2}>
-          <Image
-            src="/Wavely-Logo.png"
-            alt="Wavely Logo"
-            height="30px"
-            width="auto"
-          />
-          <Heading as="h1" size="lg" letterSpacing="tight" fontWeight="bold">
-            Wavely
-          </Heading>
-        </HStack>
-        
-        <Input
-          placeholder="Search..."
-          width={{ base: "100%", md: "300px" }}
-          mx={{ base: 0, md: 4 }}
-          my={{ base: 2, md: 0 }}
-          display={{ base: "none", md: "block" }}
-          bg={isDark ? "gray.800" : "gray.100"}
-          border="none"
-          borderRadius="full"
-        />
-        
-        <HStack spacing={4}>
-          <IconButton
-            aria-label="Home"
-            icon={<FiHome />}
-            variant="ghost"
-            onClick={handleHomeClick}
-          />
-          <IconButton
-            aria-label="Explore"
-            icon={<FiCompass />}
-            variant="ghost"
-          />
-          <IconButton
-            aria-label="New Post"
-            icon={<FiPlusSquare />}
-            variant="ghost"
-            onClick={handleCreateClick}
-          />
-          <Avatar 
-            size="sm" 
-            src={userData.profileImage}
-            name={userData.displayName}
-            cursor="pointer"
-            onClick={handleProfileClick}
-          />
-        </HStack>
-      </Flex>
-      
-      {/* Main Content Area with Scrollable Container */}
-      <Box 
-        flex="1"
-        overflowY="auto"
-        css={{
-          '&::-webkit-scrollbar': { display: 'none' },
-          'scrollbarWidth': 'none',
-          '-ms-overflow-style': 'none',
-        }}
-        bg={isDark ? "#121212" : "white"}
-        p={4}
-      >
-        {/* Main Content */}
-        <Flex justify="center">
-          <Grid
-            templateColumns={{ base: "1fr", lg: "250px 1fr 250px" }}
-            gap={6}
-            width="100%"
-            maxW="1200px"
-            py={2}
-          >
-            {/* Left Sidebar - User Profile Summary */}
-            <Box
-              display={{ base: "none", lg: "block" }}
-              bg={isDark ? "#1A1A1A" : "white"}
-              p={4}
-              borderRadius="lg"
-              boxShadow="md"
-              position="sticky"
-              top="20px"
-              height="fit-content"
-            >
-              <VStack align="center" spacing={4}>
-                <Avatar 
-                  size="xl" 
-                  src={userData.profileImage} 
-                  name={userData.displayName}
-                />
-                <Heading size="md">{userData.displayName}</Heading>
-                <Text color="gray.500">@{userData.username}</Text>
-                
-                <Divider />
-                
-                <HStack width="100%" justify="space-between">
-                  <VStack>
-                    <Text fontWeight="bold">152</Text>
-                    <Text fontSize="sm" color="gray.500">Waves</Text>
-                  </VStack>
-                  <VStack>
-                    <Text fontWeight="bold">1.2K</Text>
-                    <Text fontSize="sm" color="gray.500">Followers</Text>
-                  </VStack>
-                  <VStack>
-                    <Text fontWeight="bold">720</Text>
-                    <Text fontSize="sm" color="gray.500">Following</Text>
-                  </VStack>
-                </HStack>
-                
-                <Button colorScheme="blue" size="sm" width="full" onClick={handleProfileClick}>
-                  View Profile
-                </Button>
-              </VStack>
-            </Box>
-            
-            {/* Center Feed - Friend Waves */}
-            <VStack spacing={6} align="stretch">
-              {waves.map((wave) => (
-                <WaveCard 
-                  key={wave.id}
-                  wave={wave}
-                  currentUser={userData}
-                  onLike={() => likeWave(wave.id)}
-                  onDelete={() => deleteWave(wave.id)}
-                />
-              ))}
-            </VStack>
-            
-            {/* Right Sidebar - Top Rated Waves */}
-            <Box
-              display={{ base: "none", lg: "block" }}
-              bg={isDark ? "#1A1A1A" : "white"}
-              p={4}
-              borderRadius="lg"
-              boxShadow="md"
-              position="sticky"
-              top="20px"
-              height="fit-content"
-            >
-              <VStack align="stretch" spacing={4}>
-                <Heading size="md">Top Rated Waves</Heading>
-                
-                {waves
-                  .sort((a, b) => b.rating - a.rating)
-                  .slice(0, 3)
-                  .map((wave) => (
-                    <Flex key={wave.id} align="center" gap={3}>
-                      <Image 
-                        src={wave.image}
-                        alt={`${wave.username}'s wave`}
-                        boxSize="60px"
-                        objectFit="cover"
-                        borderRadius="md"
-                      />
-                      <VStack align="start" spacing={0} flex={1}>
-                        <Text fontWeight="bold" fontSize="sm" noOfLines={1}>
-                          {wave.displayName}
-                        </Text>
-                        <HStack>
-                          <Icon as={FiStar} color="yellow.400" size="xs" />
-                          <Text fontSize="sm">{wave.rating}</Text>
-                        </HStack>
-                      </VStack>
-                    </Flex>
-                  ))}
-                
-                <Divider />
-                
-                <Heading size="md" mt={2}>Friends</Heading>
-                
-                <HStack>
-                  <Avatar size="sm" src="/api/placeholder/50/50" name="Friend 1" />
-                  <Avatar size="sm" src="/api/placeholder/50/50" name="Friend 2" />
-                  <Avatar size="sm" src="/api/placeholder/50/50" name="Friend 3" />
-                  <Avatar size="sm" src="/api/placeholder/50/50" name="Friend 4" />
-                  <Box 
-                    borderRadius="full" 
-                    bg={isDark ? "gray.700" : "gray.200"} 
-                    px={2} 
-                    fontSize="xs"
-                  >
-                    +12
-                  </Box>
-                </HStack>
-                
-                <Button variant="outline" width="full" leftIcon={<FiUsers />}>
-                  See All Friends
-                </Button>
-              </VStack>
-            </Box>
-          </Grid>
+          <HStack spacing={2}>
+            <Image
+              src="/Wavely-Logo.png"
+              alt="Wavely Logo"
+              height="30px"
+              width="auto"
+            />
+            <Heading as="h1" size="lg" letterSpacing="tight" fontWeight="bold">
+              Wavely
+            </Heading>
+          </HStack>
+          
+          <InputGroup width={{ base: "100%", md: "300px" }} mx={{ base: 0, md: 4 }}>
+            <InputLeftElement pointerEvents="none">
+              <Icon as={FiSearch} color="gray.500" />
+            </InputLeftElement>
+            <Input
+              placeholder="Search waves..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              bg={isDark ? "gray.800" : "gray.100"}
+              border="none"
+              borderRadius="full"
+              pl={10}
+            />
+          </InputGroup>
+          
+          <HStack spacing={4}>
+            <IconButton
+              aria-label="Home"
+              icon={<FiHome />}
+              variant="ghost"
+              onClick={handleHomeClick}
+            />
+            <IconButton
+              aria-label="Explore"
+              icon={<FiCompass />}
+              variant="ghost"
+            />
+            <IconButton
+              aria-label="New Post"
+              icon={<FiPlusSquare />}
+              variant="ghost"
+              onClick={handleCreateClick}
+            />
+            <Avatar 
+              size="sm" 
+              src={currentUser?.profileImage}
+              name={currentUser?.displayName}
+              cursor="pointer"
+              onClick={handleProfileClick}
+            />
+          </HStack>
         </Flex>
+        
+        {/* Main Content Area */}
+        <Box 
+          flex="1"
+          overflowY="auto"
+          css={{
+            '&::-webkit-scrollbar': { display: 'none' },
+            scrollbarWidth: 'none',
+            msOverflowStyle: 'none'
+          }}
+          bg={isDark ? "#121212" : "white"}
+          p={4}
+        >
+          {/* Main Content */}
+          <Flex justify="center">
+            <Grid
+              templateColumns={{ base: "1fr", lg: "250px 1fr 250px" }}
+              gap={6}
+              width="100%"
+              maxW="1200px"
+              py={2}
+            >
+              {/* Left Sidebar - User Profile Summary */}
+              <Box
+                display={{ base: "none", lg: "block" }}
+                bg={isDark ? "#1A1A1A" : "white"}
+                p={4}
+                borderRadius="lg"
+                boxShadow="md"
+                position="sticky"
+                top="20px"
+                height="fit-content"
+              >
+                {currentUser ? (
+                  <VStack align="center" spacing={4}>
+                    <Avatar 
+                      size="xl" 
+                      src={currentUser.profileImage} 
+                      name={currentUser.displayName}
+                    />
+                    <Heading size="md">{currentUser.displayName}</Heading>
+                    <Text color="gray.500">@{currentUser.username}</Text>
+                    
+                    <Divider />
+                    
+                    <HStack width="100%" justify="space-between">
+                      <VStack>
+                        <Text fontWeight="bold">{userWavesCount}</Text>
+                        <Text fontSize="sm" color="gray.500">Waves</Text>
+                      </VStack>
+                      <VStack>
+                        <Text fontWeight="bold">1.2K</Text>
+                        <Text fontSize="sm" color="gray.500">Followers</Text>
+                      </VStack>
+                      <VStack>
+                        <Text fontWeight="bold">720</Text>
+                        <Text fontSize="sm" color="gray.500">Following</Text>
+                      </VStack>
+                    </HStack>
+                    
+                    <Button 
+                      colorScheme="blue" 
+                      size="sm" 
+                      width="full" 
+                      onClick={handleProfileClick}
+                    >
+                      View Profile
+                    </Button>
+                  </VStack>
+                ) : (
+                  <VStack align="center" spacing={4}>
+                    <Avatar size="xl" />
+                    <Heading size="md">Guest</Heading>
+                    <Text color="gray.500">Please sign in</Text>
+                  </VStack>
+                )}
+              </Box>
+              
+              {/* Center Feed - Waves */}
+              <VStack spacing={6} align="stretch">
+                {wavesLoading ? (
+                  <Flex justify="center" py={10}>
+                    <Spinner size="xl" />
+                  </Flex>
+                ) : filteredWaves.length > 0 ? (
+                  filteredWaves.map((wave) => (
+                    <WaveCard 
+                      key={wave.id}
+                      wave={wave}
+                      currentUser={currentUser}
+                    />
+                  ))
+                ) : (
+                  <Flex 
+                    justify="center" 
+                    align="center" 
+                    height="300px"
+                    flexDirection="column"
+                  >
+                    <Text fontSize="lg" color="gray.500" mb={4}>
+                      {searchQuery ? 'No waves match your search' : 'No waves yet'}
+                    </Text>
+                    {!searchQuery && currentUser && (
+                      <Button 
+                        colorScheme="blue" 
+                        leftIcon={<FiPlusSquare />}
+                        onClick={handleCreateClick}
+                      >
+                        Create Your First Wave
+                      </Button>
+                    )}
+                  </Flex>
+                )}
+              </VStack>
+              
+              {/* Right Sidebar - Top Rated Waves */}
+              <Box
+                display={{ base: "none", lg: "block" }}
+                bg={isDark ? "#1A1A1A" : "white"}
+                p={4}
+                borderRadius="lg"
+                boxShadow="md"
+                position="sticky"
+                top="20px"
+                height="fit-content"
+              >
+                <VStack align="stretch" spacing={4}>
+                  <Heading size="md">Top Rated Waves</Heading>
+                  
+                  {waves
+                    .filter(wave => wave.rating)
+                    .sort((a, b) => b.rating - a.rating)
+                    .slice(0, 3)
+                    .map((wave) => (
+                      <Flex 
+                        key={wave.id} 
+                        align="center" 
+                        gap={3}
+                        cursor="pointer"
+                        onClick={() => navigate(`/wave/${wave.id}`)}
+                        _hover={{ bg: isDark ? 'gray.700' : 'gray.100' }}
+                        p={2}
+                        borderRadius="md"
+                      >
+                        <Image 
+                          src={wave.mediaUrls?.[0] || "/Wavely-Logo.png"}
+                          alt={`${wave.displayName}'s wave`}
+                          boxSize="60px"
+                          objectFit="cover"
+                          borderRadius="md"
+                        />
+                        <VStack align="start" spacing={0} flex={1}>
+                          <Text fontWeight="bold" fontSize="sm" noOfLines={1}>
+                            {wave.title || wave.displayName}
+                          </Text>
+                          <HStack>
+                            <Icon as={FiStar} color="yellow.400" size="xs" />
+                            <Text fontSize="sm">{wave.rating?.toFixed(1)}</Text>
+                          </HStack>
+                        </VStack>
+                      </Flex>
+                    ))}
+                  
+                  {waves.filter(wave => wave.rating).length === 0 && (
+                    <Text color="gray.500" fontSize="sm">
+                      No rated waves yet
+                    </Text>
+                  )}
+                  
+                  <Divider />
+                  
+                  <Heading size="md" mt={2}>Trending Categories</Heading>
+                  
+                  <HStack spacing={2} wrap="wrap">
+                    {['Music', 'Art', 'Photography', 'Travel', 'Food']
+                      .map(category => (
+                        <Button
+                          key={category}
+                          size="sm"
+                          variant="outline"
+                          onClick={() => setSearchQuery(category)}
+                        >
+                          #{category}
+                        </Button>
+                      ))}
+                  </HStack>
+                </VStack>
+              </Box>
+            </Grid>
+          </Flex>
         </Box>
       </Flex>
     </Box>

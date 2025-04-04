@@ -1,33 +1,104 @@
-// context/ProfileContext.js
-import { createContext, useContext, useState, useCallback } from 'react';
+import { createContext, useContext, useState, useEffect, useCallback } from 'react';
+import { doc, getDoc, updateDoc } from 'firebase/firestore';
+import { auth, db } from '../Firebase/firebase';
+import { onAuthStateChanged } from 'firebase/auth';
 
 const ProfileContext = createContext();
 
 export const ProfileProvider = ({ children }) => {
-  const [profileData, setProfileData] = useState(() => {
-    const savedData = localStorage.getItem('profileData');
-    return savedData ? JSON.parse(savedData) : {
-      username: 'aa.a021',
-      displayName: 'adubla',
-      profileImage: '/api/placeholder/200/200',
-      bannerImage: '/api/placeholder/1200/300',
-      following: 15,
-      followers: 15,
-      likes: 10,
-      bio: 'No bio yet.'
-    };
-  });
+  const [profileData, setProfileData] = useState(null);
+  const [loading, setLoading] = useState(true);
 
-  const updateProfile = useCallback((newData) => {
-    setProfileData(prev => {
-      const updatedProfile = { ...prev, ...newData };
-      localStorage.setItem('profileData', JSON.stringify(updatedProfile));
-      return updatedProfile;
+  // Fetch profile data from Firestore when auth state changes
+  useEffect(() => {
+    const unsubscribe = onAuthStateChanged(auth, async (user) => {
+      if (user) {
+        try {
+          const userDoc = await getDoc(doc(db, 'users', user.uid));
+          if (userDoc.exists()) {
+            const userData = userDoc.data();
+            setProfileData({
+              uid: user.uid,
+              email: user.email,
+              username: userData.username,
+              displayName: userData.displayName,
+              profileImage: userData.profileImage,
+              bannerImage: userData.bannerImage,
+              bio: userData.bio || '',
+              following: userData.following || 0,
+              followers: userData.followers || 0,
+              likes: userData.likes || 0,
+              createdAt: userData.createdAt?.toDate() || new Date()
+            });
+          } else {
+            // Create default profile if user doc doesn't exist
+            setProfileData({
+              uid: user.uid,
+              email: user.email,
+              username: user.email.split('@')[0],
+              displayName: user.email.split('@')[0],
+              profileImage: '',
+              bannerImage: '',
+              bio: '',
+              following: 0,
+              followers: 0,
+              likes: 0,
+              createdAt: new Date()
+            });
+          }
+        } catch (error) {
+          console.error("Error fetching profile:", error);
+          setProfileData(null);
+        }
+      } else {
+        setProfileData(null);
+      }
+      setLoading(false);
     });
-  }, []); // Empty dependency array because we don't use external values
+
+    return () => unsubscribe();
+  }, []);
+
+  // Update profile in Firestore and local state
+  const updateProfile = useCallback(async (updates) => {
+    try {
+      const user = auth.currentUser;
+      if (!user) throw new Error("User not authenticated");
+
+      // Update Firestore
+      await updateDoc(doc(db, 'users', user.uid), updates);
+
+      // Update local state
+      setProfileData(prev => ({
+        ...prev,
+        ...updates
+      }));
+
+      return true;
+    } catch (error) {
+      console.error("Error updating profile:", error);
+      return false;
+    }
+  }, []);
+
+  // Function to update profile image
+  const updateProfileImage = useCallback(async (imageUrl) => {
+    return updateProfile({ profileImage: imageUrl });
+  }, [updateProfile]);
+
+  // Function to update banner image
+  const updateBannerImage = useCallback(async (imageUrl) => {
+    return updateProfile({ bannerImage: imageUrl });
+  }, [updateProfile]);
 
   return (
-    <ProfileContext.Provider value={{ profileData, updateProfile }}>
+    <ProfileContext.Provider value={{ 
+      profileData, 
+      loading, 
+      updateProfile,
+      updateProfileImage,
+      updateBannerImage
+    }}>
       {children}
     </ProfileContext.Provider>
   );

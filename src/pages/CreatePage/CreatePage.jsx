@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useRef } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import {
   Box,
   VStack,
@@ -26,11 +26,15 @@ import {
   RadioGroup,
   Radio,
   Stack,
-  Divider
+  Divider,
+  Spinner
 } from '@chakra-ui/react';
 import { FiUpload, FiX, FiImage, FiVideo, FiMusic, FiStar } from 'react-icons/fi';
 import { useNavbar } from "../../context/NavbarContext";
 import { useWaves } from '../../context/WaveContext';
+import { useUser } from '../../context/UserContext';
+import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
+import { auth, storage } from '../../Firebase/firebase';
 
 const CreatePage = () => {
   const [selectedFiles, setSelectedFiles] = useState([]);
@@ -39,11 +43,13 @@ const CreatePage = () => {
   const [enableRating, setEnableRating] = useState(false);
   const [ratingScale, setRatingScale] = useState("5");
   const [ratingValue, setRatingValue] = useState("0");
+  const [isLoading, setIsLoading] = useState(false); // Added loading state
   const fileInputRef = useRef(null);
   const { isNavbarOpen } = useNavbar();
   const { colorMode } = useColorMode();
   const toast = useToast();
   const { addWave } = useWaves();
+  const { currentUser } = useUser();
   const [isMobile, setIsMobile] = useState(window.innerWidth < 768);
 
   useEffect(() => {
@@ -54,15 +60,6 @@ const CreatePage = () => {
     window.addEventListener('resize', handleResize);
     return () => window.removeEventListener('resize', handleResize);
   }, []);
-
-  const [profileData] = useState(() => {
-    const savedData = localStorage.getItem('profileData');
-    return savedData ? JSON.parse(savedData) : {
-      username: 'DefaultUser',
-      displayName: 'Default User',
-      profileImage: '/api/placeholder/200/200'
-    };
-  });
 
   const getAcceptedFileTypes = () => {
     switch (mediaType) {
@@ -165,7 +162,7 @@ const CreatePage = () => {
     return `${dayName} ${formattedHours}:${minutes} ${period}`;
   };
 
-  const handleSubmit = (event) => {
+  const handleSubmit = async (event) => {
     event.preventDefault();
     
     const formData = new FormData(event.target);
@@ -173,43 +170,86 @@ const CreatePage = () => {
     const description = formData.get('description');
     const category = formData.get('category') || formData.get('genre');
 
-    const now = new Date();
-    
-    // Create the wave data object
-    const waveData = {
-      username: profileData.username,
-      displayName: profileData.displayName,
-      profileImage: profileData.profileImage,
-      content: description,
-      image: previewUrls[0] || "/Wavely-Logo.png",
-      mediaType: mediaType,
-      title: title,
-      category: category,
-      rating: enableRating ? parseFloat(ratingValue) : null,
-      ratingScale: enableRating ? parseInt(ratingScale) : null,
-      timestamp: formatTimestamp(now),
-      createdAt: now.toISOString(),
-    };
-    
-    // Add the wave using context
-    const waveId = addWave(waveData);
-    
-    // Show success message
-    toast({
-      title: "Wave created!",
-      description: "Your post has been shared with the community",
-      status: "success",
-      duration: 3000,
-      isClosable: true,
-    });
-    
-    // Reset form after submission
-    setSelectedFiles([]);
-    setPreviewUrls([]);
-    setMediaType('image');
-    setEnableRating(false);
-    setRatingValue('0');
-    event.target.reset();
+    if (!selectedFiles.length) {
+      toast({
+        title: "No files selected",
+        description: "Please select at least one file to upload",
+        status: "error",
+        duration: 3000,
+        isClosable: true,
+      });
+      return;
+    }
+
+    try {
+      setIsLoading(true); // Use setIsLoading instead of setLoading
+      
+      // Get current user
+      const user = auth.currentUser;
+      if (!user) {
+        throw new Error("You must be logged in to post a wave");
+      }
+
+      // Upload files to Firebase Storage and get URLs
+      const uploadPromises = selectedFiles.map(async (file) => {
+        const storageRef = ref(storage, `waves/${user.uid}/${Date.now()}-${file.name}`);
+        await uploadBytes(storageRef, file);
+        return getDownloadURL(storageRef);
+      });
+
+      const mediaUrls = await Promise.all(uploadPromises);
+
+      // Create the wave data object
+      const waveData = {
+        userId: user.uid,
+        username: user.displayName || currentUser?.username || user.email.split('@')[0],
+        displayName: user.displayName || currentUser?.displayName || user.email.split('@')[0],
+        profileImage: user.photoURL || currentUser?.profileImage || '',
+        content: description,
+        mediaUrls,
+        mediaType,
+        title,
+        category,
+        rating: enableRating ? parseFloat(ratingValue) : null,
+        ratingScale: enableRating ? parseInt(ratingScale) : null,
+        likes: 0,
+        comments: 0,
+        views: 0,
+        timestamp: formatTimestamp(new Date())
+      };
+
+      // Add to Firestore through context
+      await addWave(waveData);
+      
+      // Show success message
+      toast({
+        title: "Wave created!",
+        description: "Your post has been shared with the community",
+        status: "success",
+        duration: 3000,
+        isClosable: true,
+      });
+      
+      // Reset form after submission
+      setSelectedFiles([]);
+      setPreviewUrls([]);
+      setMediaType('image');
+      setEnableRating(false);
+      setRatingValue('0');
+      event.target.reset();
+      
+    } catch (error) {
+      console.error("Error uploading wave:", error);
+      toast({
+        title: "Error creating wave",
+        description: error.message,
+        status: "error",
+        duration: 3000,
+        isClosable: true,
+      });
+    } finally {
+      setIsLoading(false); // Use setIsLoading instead of setLoading
+    }
   };
 
   const changeMediaType = (type) => {
@@ -300,45 +340,45 @@ const CreatePage = () => {
         }
       }
       
-        return (
+      return (
         <HStack spacing={2} mt={4} align="center" py={4}>
-            {stars}
-            <Text ml={4} fontSize="xl">({ratingValue}/5)</Text>
+          {stars}
+          <Text ml={4} fontSize="xl">({ratingValue}/5)</Text>
         </HStack>
       );
     } else {
-        return (
-          <FormControl mt={4}>
-            <Flex align="center" py={4}>
-              <Input
-                type="number"
-                value={ratingValue}
-                onChange={(e) => {
-                  const val = parseFloat(e.target.value);
-                  if (isNaN(val)) {
-                    setRatingValue("0");
-                  } else if (val < 0) {
-                    setRatingValue("0");
-                  } else if (val > 10) {
-                    setRatingValue("10");
-                  } else {
-                    setRatingValue(val.toString());
-                  }
-                }}
-                max={10}
-                min={0}
-                step={0.1}
-                width="100px"
-                height="60px"
-                fontSize="xl"
-                mr={3}
-              />
-              <Text fontSize="xl">/10</Text>
-            </Flex>
-          </FormControl>
-        );
-      }
-    };
+      return (
+        <FormControl mt={4}>
+          <Flex align="center" py={4}>
+            <Input
+              type="number"
+              value={ratingValue}
+              onChange={(e) => {
+                const val = parseFloat(e.target.value);
+                if (isNaN(val)) {
+                  setRatingValue("0");
+                } else if (val < 0) {
+                  setRatingValue("0");
+                } else if (val > 10) {
+                  setRatingValue("10");
+                } else {
+                  setRatingValue(val.toString());
+                }
+              }}
+              max={10}
+              min={0}
+              step={0.1}
+              width="100px"
+              height="60px"
+              fontSize="xl"
+              mr={3}
+            />
+            <Text fontSize="xl">/10</Text>
+          </Flex>
+        </FormControl>
+      );
+    }
+  };
 
   const renderPreview = () => {
     if (selectedFiles.length === 0) return null;
@@ -448,307 +488,131 @@ const CreatePage = () => {
           p={8}
           boxShadow="lg"
         >
-        <VStack spacing={8} align="stretch">
-          <Heading size="lg" color={colorMode === 'light' ? 'gray.800' : 'white'}>
-            Post A Wave!
-          </Heading>
+          <VStack spacing={8} align="stretch">
+            <Heading size="lg" color={colorMode === 'light' ? 'gray.800' : 'white'}>
+              Post A Wave!
+            </Heading>
 
-          <Tabs isFitted variant="enclosed" onChange={index => changeMediaType(["image", "video", "audio"][index])}>
-            <TabList mb="1em">
-              <Tab _selected={{ color: "white", bg: "blue.500" }}>
-                <HStack>
-                  <Icon as={FiImage} />
-                  <Text>Images</Text>
-                </HStack>
-              </Tab>
-              <Tab _selected={{ color: "white", bg: "blue.500" }}>
-                <HStack>
-                  <Icon as={FiVideo} />
-                  <Text>Videos</Text>
-                </HStack>
-              </Tab>
-              <Tab _selected={{ color: "white", bg: "blue.500" }}>
-                <HStack>
-                  <Icon as={FiMusic} />
-                  <Text>Audio</Text>
-                </HStack>
-              </Tab>
-            </TabList>
-            <TabPanels>
-              <TabPanel p={0}>
-                <form onSubmit={handleSubmit}>
-                  <VStack spacing={6} align="stretch">
-                    <Box
-                      border="2px dashed"
-                      borderColor={colorMode === 'light' ? 'gray.300' : 'whiteAlpha.300'}
-                      borderRadius="lg"
-                      p={8}
-                      textAlign="center"
-                      onDragOver={handleDragOver}
-                      onDrop={handleDrop}
-                    >
-                      <input
-                        type="file"
-                        accept={getAcceptedFileTypes()}
-                        onChange={handleFileChange}
-                        ref={fileInputRef}
-                        style={{ display: 'none' }}
-                        multiple
-                      />
-
-                      <VStack spacing={4}>
-                        <Icon as={FiUpload} boxSize={10} color={colorMode === 'light' ? 'gray.500' : 'whiteAlpha.500'} />
-                        <Text color={colorMode === 'light' ? 'gray.500' : 'whiteAlpha.500'}>
-                          Drag and drop your images here or
-                        </Text>
-                        <Button
-                          onClick={() => fileInputRef.current?.click()}
-                          colorScheme="blue"
-                          size="lg"
-                        >
-                          Browse Files
-                        </Button>
-                        <Text fontSize="sm" color={colorMode === 'light' ? 'gray.500' : 'whiteAlpha.500'}>
-                          Supported formats: JPG, PNG, GIF, WebP
-                        </Text>
-                      </VStack>
-                    </Box>
-
-                    {renderPreview()}
-
-                    <FormControl>
-                      <FormLabel color={colorMode === 'light' ? 'gray.700' : 'white'}>Title</FormLabel>
-                      <Input
-                        name="title"  // Add name attribute
-                        placeholder={`Enter a title for your ${mediaType}`}
-                        size="lg"
-                        bg={colorMode === 'light' ? 'white' : 'whiteAlpha.50'}
-                      />
-                    </FormControl>
-
-                    <FormControl>
-                      <FormLabel color={colorMode === 'light' ? 'gray.700' : 'white'}>Description</FormLabel>
-                      <Textarea
-                        name="description"  // Add name attribute
-                        placeholder="Enter a description"
-                        size="lg"
-                        bg={colorMode === 'light' ? 'white' : 'whiteAlpha.50'}
-                      />
-                    </FormControl>
-
-                    <FormControl>
-                      <FormLabel color={colorMode === 'light' ? 'gray.700' : 'white'}>
-                        {mediaType === 'audio' ? 'Genre' : 'Category'}
-                      </FormLabel>
-                      <Select
-                        name={mediaType === 'audio' ? 'genre' : 'category'}  // Add name attribute
-                        placeholder={`Select ${mediaType === 'audio' ? 'genre' : 'category'}`}
-                        size="lg"
-                        bg={colorMode === 'light' ? 'white' : 'whiteAlpha.50'}
+            <Tabs isFitted variant="enclosed" onChange={index => changeMediaType(["image", "video", "audio"][index])}>
+              <TabList mb="1em">
+                <Tab _selected={{ color: "white", bg: "blue.500" }}>
+                  <HStack>
+                    <Icon as={FiImage} />
+                    <Text>Images</Text>
+                  </HStack>
+                </Tab>
+                <Tab _selected={{ color: "white", bg: "blue.500" }}>
+                  <HStack>
+                    <Icon as={FiVideo} />
+                    <Text>Videos</Text>
+                  </HStack>
+                </Tab>
+                <Tab _selected={{ color: "white", bg: "blue.500" }}>
+                  <HStack>
+                    <Icon as={FiMusic} />
+                    <Text>Audio</Text>
+                  </HStack>
+                </Tab>
+              </TabList>
+              <TabPanels>
+                <TabPanel p={0}>
+                  <form onSubmit={handleSubmit}>
+                    <VStack spacing={6} align="stretch">
+                      <Box
+                        border="2px dashed"
+                        borderColor={colorMode === 'light' ? 'gray.300' : 'whiteAlpha.300'}
+                        borderRadius="lg"
+                        p={8}
+                        textAlign="center"
+                        onDragOver={handleDragOver}
+                        onDrop={handleDrop}
                       >
-                        <option value="art">Art</option>
-                        <option value="photography">Photography</option>
-                        <option value="nature">Nature</option>
-                        <option value="people">People</option>
-                        <option value="food">Food</option>
-                        <option value="travel">Travel</option>
-                      </Select>
-                    </FormControl>
+                        <input
+                          type="file"
+                          accept={getAcceptedFileTypes()}
+                          onChange={handleFileChange}
+                          ref={fileInputRef}
+                          style={{ display: 'none' }}
+                          multiple
+                        />
 
-                    {renderRatingSection()}
+                        <VStack spacing={4}>
+                          <Icon as={FiUpload} boxSize={10} color={colorMode === 'light' ? 'gray.500' : 'whiteAlpha.500'} />
+                          <Text color={colorMode === 'light' ? 'gray.500' : 'whiteAlpha.500'}>
+                            Drag and drop your images here or
+                          </Text>
+                          <Button
+                            onClick={() => fileInputRef.current?.click()}
+                            colorScheme="blue"
+                            size="lg"
+                          >
+                            Browse Files
+                          </Button>
+                          <Text fontSize="sm" color={colorMode === 'light' ? 'gray.500' : 'whiteAlpha.500'}>
+                            Supported formats: JPG, PNG, GIF, WebP
+                          </Text>
+                        </VStack>
+                      </Box>
 
-                    <Button
-                      type="submit"
-                      colorScheme="blue"
-                      size="lg"
-                      isDisabled={selectedFiles.length === 0}
-                    >
-                      Upload Images
-                    </Button>
-                  </VStack>
-                </form>
-              </TabPanel>
-              
-              <TabPanel p={0}>
-                <form onSubmit={handleSubmit}>
-                  <VStack spacing={6} align="stretch">
-                    <Box
-                      border="2px dashed"
-                      borderColor={colorMode === 'light' ? 'gray.300' : 'whiteAlpha.300'}
-                      borderRadius="lg"
-                      p={8}
-                      textAlign="center"
-                      onDragOver={handleDragOver}
-                      onDrop={handleDrop}
-                    >
-                      <input
-                        type="file"
-                        accept={getAcceptedFileTypes()}
-                        onChange={handleFileChange}
-                        ref={fileInputRef}
-                        style={{ display: 'none' }}
-                        multiple
-                      />
+                      {renderPreview()}
 
-                      <VStack spacing={4}>
-                        <Icon as={FiUpload} boxSize={10} color={colorMode === 'light' ? 'gray.500' : 'whiteAlpha.500'} />
-                        <Text color={colorMode === 'light' ? 'gray.500' : 'whiteAlpha.500'}>
-                          Drag and drop your videos here or
-                        </Text>
-                        <Button
-                          onClick={() => fileInputRef.current?.click()}
-                          colorScheme="blue"
+                      <FormControl>
+                        <FormLabel color={colorMode === 'light' ? 'gray.700' : 'white'}>Title</FormLabel>
+                        <Input
+                          name="title"
+                          placeholder={`Enter a title for your ${mediaType}`}
                           size="lg"
-                        >
-                          Browse Files
-                        </Button>
-                        <Text fontSize="sm" color={colorMode === 'light' ? 'gray.500' : 'whiteAlpha.500'}>
-                          Supported formats: MP4, WebM, MOV (Max size: 100MB)
-                        </Text>
-                      </VStack>
-                    </Box>
+                          bg={colorMode === 'light' ? 'white' : 'whiteAlpha.50'}
+                        />
+                      </FormControl>
 
-                    {renderPreview()}
-
-                    <FormControl>
-                      <FormLabel color={colorMode === 'light' ? 'gray.700' : 'white'}>Title</FormLabel>
-                      <Input
-                        placeholder="Enter a title for your video"
-                        size="lg"
-                        bg={colorMode === 'light' ? 'white' : 'whiteAlpha.50'}
-                      />
-                    </FormControl>
-
-                    <FormControl>
-                      <FormLabel color={colorMode === 'light' ? 'gray.700' : 'white'}>Description</FormLabel>
-                      <Textarea
-                        placeholder="Enter a description"
-                        size="lg"
-                        bg={colorMode === 'light' ? 'white' : 'whiteAlpha.50'}
-                      />
-                    </FormControl>
-
-                    <FormControl>
-                      <FormLabel color={colorMode === 'light' ? 'gray.700' : 'white'}>Category</FormLabel>
-                      <Select
-                        placeholder="Select category"
-                        size="lg"
-                        bg={colorMode === 'light' ? 'white' : 'whiteAlpha.50'}
-                      >
-                        <option value="entertainment">Entertainment</option>
-                        <option value="education">Education</option>
-                        <option value="gaming">Gaming</option>
-                        <option value="music">Music</option>
-                        <option value="vlog">Vlog</option>
-                        <option value="tutorial">Tutorial</option>
-                      </Select>
-                    </FormControl>
-
-                    {renderRatingSection()}
-
-                    <Button
-                      type="submit"
-                      colorScheme="blue"
-                      size="lg"
-                      isDisabled={selectedFiles.length === 0}
-                    >
-                      Upload Videos
-                    </Button>
-                  </VStack>
-                </form>
-              </TabPanel>
-              
-              <TabPanel p={0}>
-                <form onSubmit={handleSubmit}>
-                  <VStack spacing={6} align="stretch">
-                    <Box
-                      border="2px dashed"
-                      borderColor={colorMode === 'light' ? 'gray.300' : 'whiteAlpha.300'}
-                      borderRadius="lg"
-                      p={8}
-                      textAlign="center"
-                      onDragOver={handleDragOver}
-                      onDrop={handleDrop}
-                    >
-                      <input
-                        type="file"
-                        accept={getAcceptedFileTypes()}
-                        onChange={handleFileChange}
-                        ref={fileInputRef}
-                        style={{ display: 'none' }}
-                        multiple
-                      />
-
-                      <VStack spacing={4}>
-                        <Icon as={FiUpload} boxSize={10} color={colorMode === 'light' ? 'gray.500' : 'whiteAlpha.500'} />
-                        <Text color={colorMode === 'light' ? 'gray.500' : 'whiteAlpha.500'}>
-                          Drag and drop your audio files here or
-                        </Text>
-                        <Button
-                          onClick={() => fileInputRef.current?.click()}
-                          colorScheme="blue"
+                      <FormControl>
+                        <FormLabel color={colorMode === 'light' ? 'gray.700' : 'white'}>Description</FormLabel>
+                        <Textarea
+                          name="description"
+                          placeholder="Enter a description"
                           size="lg"
+                          bg={colorMode === 'light' ? 'white' : 'whiteAlpha.50'}
+                        />
+                      </FormControl>
+
+                      <FormControl>
+                        <FormLabel color={colorMode === 'light' ? 'gray.700' : 'white'}>
+                          {mediaType === 'audio' ? 'Genre' : 'Category'}
+                        </FormLabel>
+                        <Select
+                          name={mediaType === 'audio' ? 'genre' : 'category'}
+                          placeholder={`Select ${mediaType === 'audio' ? 'genre' : 'category'}`}
+                          size="lg"
+                          bg={colorMode === 'light' ? 'white' : 'whiteAlpha.50'}
                         >
-                          Browse Files
-                        </Button>
-                        <Text fontSize="sm" color={colorMode === 'light' ? 'gray.500' : 'whiteAlpha.500'}>
-                          Supported formats: MP3, WAV, AAC, FLAC
-                        </Text>
-                      </VStack>
-                    </Box>
+                          <option value="art">Art</option>
+                          <option value="photography">Photography</option>
+                          <option value="nature">Nature</option>
+                          <option value="people">People</option>
+                          <option value="food">Food</option>
+                          <option value="travel">Travel</option>
+                        </Select>
+                      </FormControl>
 
-                    {renderPreview()}
+                      {renderRatingSection()}
 
-                    <FormControl>
-                      <FormLabel color={colorMode === 'light' ? 'gray.700' : 'white'}>Title</FormLabel>
-                      <Input
-                        placeholder="Enter audio title"
+                      <Button
+                        type="submit"
+                        colorScheme="blue"
                         size="lg"
-                        bg={colorMode === 'light' ? 'white' : 'whiteAlpha.50'}
-                      />
-                    </FormControl>
-
-                    <FormControl>
-                      <FormLabel color={colorMode === 'light' ? 'gray.700' : 'white'}>Description</FormLabel>
-                      <Textarea
-                        placeholder="Enter audio description"
-                        size="lg"
-                        bg={colorMode === 'light' ? 'white' : 'whiteAlpha.50'}
-                      />
-                    </FormControl>
-
-                    <FormControl>
-                      <FormLabel color={colorMode === 'light' ? 'gray.700' : 'white'}>Genre</FormLabel>
-                      <Select
-                        placeholder="Select genre"
-                        size="lg"
-                        bg={colorMode === 'light' ? 'white' : 'whiteAlpha.50'}
+                        isDisabled={selectedFiles.length === 0 || isLoading}
+                        isLoading={isLoading}
+                        loadingText={isLoading ? "Uploading..." : null}
                       >
-                        <option value="pop">Pop</option>
-                        <option value="rock">Rock</option>
-                        <option value="hiphop">Hip Hop</option>
-                        <option value="jazz">Jazz</option>
-                        <option value="classical">Classical</option>
-                        <option value="electronic">Electronic</option>
-                      </Select>
-                    </FormControl>
-
-                    {renderRatingSection()}
-
-                    <Button
-                      type="submit"
-                      colorScheme="blue"
-                      size="lg"
-                      isDisabled={selectedFiles.length === 0}
-                    >
-                      Upload Audio
-                    </Button>
-                  </VStack>
-                </form>
-              </TabPanel>
-            </TabPanels>
-          </Tabs>
-        </VStack>
+                        {isLoading ? <Spinner size="sm" /> : "Upload Images"}
+                      </Button>
+                    </VStack>
+                  </form>
+                </TabPanel>
+              </TabPanels>
+            </Tabs>
+          </VStack>
         </Box>
       </Flex>
     </Box>
