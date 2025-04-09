@@ -11,20 +11,20 @@ import {
   arrayUnion,
   arrayRemove,
   increment,
-  serverTimestamp
+  serverTimestamp,
+  getDoc
 } from 'firebase/firestore';
 import { db } from '../Firebase/firebase';
 
 const WaveContext = createContext();
 
-// Helper to format timestamp (can be kept or moved)
 const formatTimestamp = (date) => {
   if (!date || !(date instanceof Date) || isNaN(date.getTime())) {
-     return 'Just now';
+    return 'Just now';
   }
   const now = new Date();
   if (isNaN(now.getTime())) {
-     return 'Calculating...';
+    return 'Calculating...';
   }
   const diffInSeconds = Math.floor((now.getTime() - date.getTime()) / 1000);
   if (diffInSeconds < 0) return `Just now`;
@@ -37,6 +37,44 @@ const formatTimestamp = (date) => {
 export const WaveProvider = ({ children }) => {
   const [waves, setWaves] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [userProfileCache, setUserProfileCache] = useState({});
+
+  // Fetch user profile data and cache it
+  const fetchUserProfile = useCallback(async (userId) => {
+    if (!userId || userProfileCache[userId]) return;
+    
+    try {
+      const userRef = doc(db, 'users', userId);
+      const userSnap = await getDoc(userRef);
+      
+      if (userSnap.exists()) {
+        const userData = userSnap.data();
+        setUserProfileCache(prev => ({
+          ...prev,
+          [userId]: {
+            displayName: userData.displayName,
+            username: userData.username,
+            profileImage: userData.profileImage
+          }
+        }));
+      }
+    } catch (error) {
+      console.error("Error fetching user profile:", error);
+    }
+  }, [userProfileCache]);
+
+  // Process waves data with user profile information
+  const processWavesData = useCallback((rawWaves) => {
+    return rawWaves.map(wave => {
+      const userProfile = userProfileCache[wave.userId] || {};
+      return {
+        ...wave,
+        displayName: userProfile.displayName || wave.displayName || 'User',
+        username: userProfile.username || wave.username || 'user',
+        profileImage: userProfile.profileImage || wave.profileImage || '/default-avatar.png'
+      };
+    });
+  }, [userProfileCache]);
 
   useEffect(() => {
     setLoading(true);
@@ -45,26 +83,37 @@ export const WaveProvider = ({ children }) => {
       orderBy('createdAt', 'desc')
     );
 
-    const unsubscribe = onSnapshot(q, (querySnapshot) => {
+    const unsubscribe = onSnapshot(q, async (querySnapshot) => {
       const wavesData = [];
+      const userIds = new Set();
+      
+      // First pass: collect all user IDs
       querySnapshot.forEach((doc) => {
-         const data = doc.data();
-         const createdAtDate = data.createdAt?.toDate ? data.createdAt.toDate() : null;
+        const data = doc.data();
+        if (data.userId) {
+          userIds.add(data.userId);
+        }
+        const createdAtDate = data.createdAt?.toDate ? data.createdAt.toDate() : null;
         wavesData.push({
           id: doc.id,
           ...data,
-          createdAt: createdAtDate, // Store as Date object
+          createdAt: createdAtDate,
         });
       });
-      setWaves(wavesData);
+
+      // Fetch profiles for all users mentioned in waves
+      await Promise.all(Array.from(userIds).map(userId => fetchUserProfile(userId)));
+      
+      // Process waves with profile data
+      setWaves(processWavesData(wavesData));
       setLoading(false);
     }, (error) => {
-        console.error("Error fetching waves:", error);
-        setLoading(false);
+      console.error("Error fetching waves:", error);
+      setLoading(false);
     });
 
     return () => unsubscribe();
-  }, []);
+  }, [fetchUserProfile, processWavesData]);
 
   const addWave = async (waveData) => {
     try {
@@ -96,8 +145,8 @@ export const WaveProvider = ({ children }) => {
 
   const likeWave = async (id, userId) => {
     if (!userId) {
-        console.warn("likeWave called without userId");
-        return;
+      console.warn("likeWave called without userId");
+      return;
     }
     try {
       const waveRef = doc(db, 'waves', id);
@@ -114,16 +163,15 @@ export const WaveProvider = ({ children }) => {
   };
 
   const addComment = async (waveId, commentData) => {
-     if (!commentData || !commentData.userId || !commentData.content) {
-        console.error("Attempted to add invalid comment data:", commentData);
-        throw new Error("Invalid comment data provided.");
-      }
+    if (!commentData || !commentData.userId || !commentData.content) {
+      console.error("Attempted to add invalid comment data:", commentData);
+      throw new Error("Invalid comment data provided.");
+    }
     try {
       const waveRef = doc(db, 'waves', waveId);
       const comment = {
         ...commentData,
-        id: commentData.id ||
-          Date.now().toString(),
+        id: commentData.id || Date.now().toString(),
         timestamp: commentData.timestamp || new Date().toISOString()
       };
       await updateDoc(waveRef, {
@@ -136,38 +184,35 @@ export const WaveProvider = ({ children }) => {
     }
   };
 
-  // Function to update USER data ON WAVES (Client-Side State Only)
+  // Update user profile cache and waves when user data changes
   const updateUserDataOnWaves = useCallback((userId, updatedData) => {
-    // console.log(`WaveContext: Updating waves for userId: ${userId} with data:`, updatedData);
-    setWaves(currentWaves => {
-      let changed = false;
-      const newWaves = currentWaves.map(wave => {
+    if (!userId) return;
+
+    // Update profile cache
+    setUserProfileCache(prev => ({
+      ...prev,
+      [userId]: {
+        ...prev[userId],
+        ...updatedData
+      }
+    }));
+
+    // Update waves in state
+    setWaves(prevWaves => {
+      return prevWaves.map(wave => {
         if (wave.userId === userId) {
-          const needsUpdate = (
-            (updatedData.displayName !== undefined && wave.displayName !==
-             updatedData.displayName) ||
-            (updatedData.username !== undefined && wave.username !== updatedData.username) ||
-            (updatedData.profileImage !== undefined && wave.profileImage !== updatedData.profileImage)
-          );
-          if (needsUpdate) {
-             changed = true;
-             return {
-               ...wave,
-                ...(updatedData.displayName !== undefined && { displayName: updatedData.displayName }),
-                ...(updatedData.username !== undefined && { username: updatedData.username }),
-                ...(updatedData.profileImage !== undefined && { profileImage: updatedData.profileImage }),
-             };
-          }
+          return {
+            ...wave,
+            ...(updatedData.displayName !== undefined && { displayName: updatedData.displayName }),
+            ...(updatedData.username !== undefined && { username: updatedData.username }),
+            ...(updatedData.profileImage !== undefined && { profileImage: updatedData.profileImage }),
+          };
         }
         return wave;
       });
-      // Only update state if something actually changed
-      // if (changed) console.log("WaveContext: Wave data updated in state.");
-      return changed ? newWaves : currentWaves;
     });
   }, []);
 
-  // Provide all functions including the new one
   const contextValue = {
     waves,
     loading,
@@ -175,7 +220,8 @@ export const WaveProvider = ({ children }) => {
     deleteWave,
     likeWave,
     addComment,
-    updateUserDataOnWaves // <-- Included
+    updateUserDataOnWaves,
+    fetchUserProfile // Expose fetchUserProfile for manual triggering if needed
   };
 
   return (
@@ -185,7 +231,6 @@ export const WaveProvider = ({ children }) => {
   );
 };
 
-// Custom hook
 export const useWaves = () => {
   const context = useContext(WaveContext);
   if (!context) {

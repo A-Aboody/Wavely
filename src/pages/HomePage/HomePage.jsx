@@ -55,7 +55,7 @@ const HomePage = () => {
   
   const handleHomeClick = () => navigate('/');
   const handleCreateClick = () => navigate('/create');
-  const handleProfileClick = () => navigate(`/profile/${currentUser?.uid}`);
+  const handleProfileClick = () => navigate(`/profile/${currentUser?.username}`);
 
   const filteredWaves = waves.filter(wave => 
     wave.title?.toLowerCase().includes(searchQuery.toLowerCase()) ||
@@ -200,11 +200,11 @@ const HomePage = () => {
                         <Text fontSize="sm" color="gray.500">Waves</Text>
                       </VStack>
                       <VStack>
-                        <Text fontWeight="bold">1.2K</Text>
+                        <Text fontWeight="bold">{currentUser?.followers?.length || 0}</Text>
                         <Text fontSize="sm" color="gray.500">Followers</Text>
                       </VStack>
                       <VStack>
-                        <Text fontWeight="bold">720</Text>
+                        <Text fontWeight="bold">{currentUser?.following?.length || 0}</Text>
                         <Text fontSize="sm" color="gray.500">Following</Text>
                       </VStack>
                     </HStack>

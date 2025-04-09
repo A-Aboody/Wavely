@@ -43,7 +43,7 @@ const CreatePage = () => {
   const [enableRating, setEnableRating] = useState(false);
   const [ratingScale, setRatingScale] = useState("5");
   const [ratingValue, setRatingValue] = useState("0");
-  const [isLoading, setIsLoading] = useState(false); // Added loading state
+  const [isLoading, setIsLoading] = useState(false);
   const fileInputRef = useRef(null);
   const { isNavbarOpen } = useNavbar();
   const { colorMode } = useColorMode();
@@ -173,7 +173,7 @@ const CreatePage = () => {
     if (!selectedFiles.length) {
       toast({
         title: "No files selected",
-        description: "Please select at least one file to upload",
+        description: `Please select at least one ${mediaType} file to upload`,
         status: "error",
         duration: 3000,
         isClosable: true,
@@ -182,7 +182,7 @@ const CreatePage = () => {
     }
 
     try {
-      setIsLoading(true); // Use setIsLoading instead of setLoading
+      setIsLoading(true);
       
       // Get current user
       const user = auth.currentUser;
@@ -233,7 +233,6 @@ const CreatePage = () => {
       // Reset form after submission
       setSelectedFiles([]);
       setPreviewUrls([]);
-      setMediaType('image');
       setEnableRating(false);
       setRatingValue('0');
       event.target.reset();
@@ -248,7 +247,7 @@ const CreatePage = () => {
         isClosable: true,
       });
     } finally {
-      setIsLoading(false); // Use setIsLoading instead of setLoading
+      setIsLoading(false);
     }
   };
 
@@ -466,6 +465,143 @@ const CreatePage = () => {
     );
   };
 
+  const getCategoryOptions = () => {
+    switch (mediaType) {
+      case "image":
+        return (
+          <>
+            <option value="art">Art</option>
+            <option value="photography">Photography</option>
+            <option value="nature">Nature</option>
+            <option value="people">People</option>
+            <option value="food">Food</option>
+            <option value="travel">Travel</option>
+          </>
+        );
+      case "video":
+        return (
+          <>
+            <option value="short-film">Short Film</option>
+            <option value="vlog">Vlog</option>
+            <option value="tutorial">Tutorial</option>
+            <option value="comedy">Comedy</option>
+            <option value="documentary">Documentary</option>
+            <option value="animation">Animation</option>
+          </>
+        );
+      case "audio":
+        return (
+          <>
+            <option value="music">Music</option>
+            <option value="podcast">Podcast</option>
+            <option value="audiobook">Audiobook</option>
+            <option value="sound-effects">Sound Effects</option>
+            <option value="voice-over">Voice Over</option>
+            <option value="instrumental">Instrumental</option>
+          </>
+        );
+      default:
+        return null;
+    }
+  };
+
+  const renderDropZone = () => (
+    <Box
+      border="2px dashed"
+      borderColor={colorMode === 'light' ? 'gray.300' : 'whiteAlpha.300'}
+      borderRadius="lg"
+      p={8}
+      textAlign="center"
+      onDragOver={handleDragOver}
+      onDrop={handleDrop}
+    >
+      <input
+        type="file"
+        accept={getAcceptedFileTypes()}
+        onChange={handleFileChange}
+        ref={fileInputRef}
+        style={{ display: 'none' }}
+        multiple
+      />
+
+      <VStack spacing={4}>
+        <Icon as={FiUpload} boxSize={10} color={colorMode === 'light' ? 'gray.500' : 'whiteAlpha.500'} />
+        <Text color={colorMode === 'light' ? 'gray.500' : 'whiteAlpha.500'}>
+          Drag and drop your {mediaType}s here or
+        </Text>
+        <Button
+          onClick={() => fileInputRef.current?.click()}
+          colorScheme="blue"
+          size="lg"
+        >
+          Browse Files
+        </Button>
+        <Text fontSize="sm" color={colorMode === 'light' ? 'gray.500' : 'whiteAlpha.500'}>
+          {mediaType === "image" && "Supported formats: JPG, PNG, GIF, WebP"}
+          {mediaType === "video" && "Supported formats: MP4, WebM, MOV, AVI"}
+          {mediaType === "audio" && "Supported formats: MP3, WAV, OGG, FLAC"}
+        </Text>
+      </VStack>
+    </Box>
+  );
+
+  const renderUploadForm = () => (
+    <form onSubmit={handleSubmit}>
+      <VStack spacing={6} align="stretch">
+        {renderDropZone()}
+
+        {renderPreview()}
+
+        <FormControl>
+          <FormLabel color={colorMode === 'light' ? 'gray.700' : 'white'}>Title</FormLabel>
+          <Input
+            name="title"
+            placeholder={`Enter a title for your ${mediaType}`}
+            size="lg"
+            bg={colorMode === 'light' ? 'white' : 'whiteAlpha.50'}
+          />
+        </FormControl>
+
+        <FormControl>
+          <FormLabel color={colorMode === 'light' ? 'gray.700' : 'white'}>Description</FormLabel>
+          <Textarea
+            name="description"
+            placeholder="Enter a description"
+            size="lg"
+            bg={colorMode === 'light' ? 'white' : 'whiteAlpha.50'}
+          />
+        </FormControl>
+
+        <FormControl>
+          <FormLabel color={colorMode === 'light' ? 'gray.700' : 'white'}>
+            {mediaType === 'audio' ? 'Genre' : 'Category'}
+          </FormLabel>
+          <Select
+            name={mediaType === 'audio' ? 'genre' : 'category'}
+            placeholder={`Select ${mediaType === 'audio' ? 'genre' : 'category'}`}
+            size="lg"
+            bg={colorMode === 'light' ? 'white' : 'whiteAlpha.50'}
+          >
+            {getCategoryOptions()}
+          </Select>
+        </FormControl>
+
+        {renderRatingSection()}
+
+        <Button
+          type="submit"
+          colorScheme="blue"
+          size="lg"
+          isDisabled={selectedFiles.length === 0 || isLoading}
+          isLoading={isLoading}
+          loadingText={isLoading ? "Uploading..." : null}
+        >
+          {isLoading ? <Spinner size="sm" /> : `Upload ${mediaType === "image" ? "Images" : mediaType === "video" ? "Videos" : "Audio"}`}
+        </Button>
+      </VStack>
+    </form>
+  );
+
   return (
     <Box
       width="100vw"
@@ -516,99 +652,13 @@ const CreatePage = () => {
               </TabList>
               <TabPanels>
                 <TabPanel p={0}>
-                  <form onSubmit={handleSubmit}>
-                    <VStack spacing={6} align="stretch">
-                      <Box
-                        border="2px dashed"
-                        borderColor={colorMode === 'light' ? 'gray.300' : 'whiteAlpha.300'}
-                        borderRadius="lg"
-                        p={8}
-                        textAlign="center"
-                        onDragOver={handleDragOver}
-                        onDrop={handleDrop}
-                      >
-                        <input
-                          type="file"
-                          accept={getAcceptedFileTypes()}
-                          onChange={handleFileChange}
-                          ref={fileInputRef}
-                          style={{ display: 'none' }}
-                          multiple
-                        />
-
-                        <VStack spacing={4}>
-                          <Icon as={FiUpload} boxSize={10} color={colorMode === 'light' ? 'gray.500' : 'whiteAlpha.500'} />
-                          <Text color={colorMode === 'light' ? 'gray.500' : 'whiteAlpha.500'}>
-                            Drag and drop your images here or
-                          </Text>
-                          <Button
-                            onClick={() => fileInputRef.current?.click()}
-                            colorScheme="blue"
-                            size="lg"
-                          >
-                            Browse Files
-                          </Button>
-                          <Text fontSize="sm" color={colorMode === 'light' ? 'gray.500' : 'whiteAlpha.500'}>
-                            Supported formats: JPG, PNG, GIF, WebP
-                          </Text>
-                        </VStack>
-                      </Box>
-
-                      {renderPreview()}
-
-                      <FormControl>
-                        <FormLabel color={colorMode === 'light' ? 'gray.700' : 'white'}>Title</FormLabel>
-                        <Input
-                          name="title"
-                          placeholder={`Enter a title for your ${mediaType}`}
-                          size="lg"
-                          bg={colorMode === 'light' ? 'white' : 'whiteAlpha.50'}
-                        />
-                      </FormControl>
-
-                      <FormControl>
-                        <FormLabel color={colorMode === 'light' ? 'gray.700' : 'white'}>Description</FormLabel>
-                        <Textarea
-                          name="description"
-                          placeholder="Enter a description"
-                          size="lg"
-                          bg={colorMode === 'light' ? 'white' : 'whiteAlpha.50'}
-                        />
-                      </FormControl>
-
-                      <FormControl>
-                        <FormLabel color={colorMode === 'light' ? 'gray.700' : 'white'}>
-                          {mediaType === 'audio' ? 'Genre' : 'Category'}
-                        </FormLabel>
-                        <Select
-                          name={mediaType === 'audio' ? 'genre' : 'category'}
-                          placeholder={`Select ${mediaType === 'audio' ? 'genre' : 'category'}`}
-                          size="lg"
-                          bg={colorMode === 'light' ? 'white' : 'whiteAlpha.50'}
-                        >
-                          <option value="art">Art</option>
-                          <option value="photography">Photography</option>
-                          <option value="nature">Nature</option>
-                          <option value="people">People</option>
-                          <option value="food">Food</option>
-                          <option value="travel">Travel</option>
-                        </Select>
-                      </FormControl>
-
-                      {renderRatingSection()}
-
-                      <Button
-                        type="submit"
-                        colorScheme="blue"
-                        size="lg"
-                        isDisabled={selectedFiles.length === 0 || isLoading}
-                        isLoading={isLoading}
-                        loadingText={isLoading ? "Uploading..." : null}
-                      >
-                        {isLoading ? <Spinner size="sm" /> : "Upload Images"}
-                      </Button>
-                    </VStack>
-                  </form>
+                  {renderUploadForm()}
+                </TabPanel>
+                <TabPanel p={0}>
+                  {renderUploadForm()}
+                </TabPanel>
+                <TabPanel p={0}>
+                  {renderUploadForm()}
                 </TabPanel>
               </TabPanels>
             </Tabs>

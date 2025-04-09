@@ -4,6 +4,7 @@ import HomePage from './pages/HomePage/HomePage';
 import AuthPage from './pages/AuthPage/AuthPage';
 import ProfilePage from './pages/ProfilePage/ProfilePage';
 import UploadsPage from './pages/UploadsPage/UploadsPage';
+import InboxPage from './pages/InboxPage/InboxPage';
 import SettingsPage from './pages/SettingsPage/SettingsPage';
 import PageLayout from './layouts/PageLayout/PageLayout';
 import { NavbarProvider } from './context/NavbarContext';
@@ -21,8 +22,9 @@ function App() {
               <Routes>
                 <Route path='/' element={<HomePage />} />
                 <Route path='/create' element={<CreatePage />} />
-                <Route path="/profile/:userId" element={<ProfilePage />} />
+                <Route path="/profile/:username?" element={<ProfilePage />} />
                 <Route path='/uploads' element={<UploadsPage />} />
+                <Route path='/inbox' element={<InboxPage />} />
                 <Route path='/settings' element={<SettingsPage />} />
                 <Route path='/auth' element={<AuthPage />} />
               </Routes>

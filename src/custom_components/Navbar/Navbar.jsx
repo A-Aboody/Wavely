@@ -1,6 +1,36 @@
-import { Avatar, Box, Flex, Icon, Link, IconButton, VStack, Tooltip, useDisclosure, Image, Modal, ModalOverlay, ModalContent, ModalBody, Button, Center } from "@chakra-ui/react";
-import { Link as RouterLink } from "react-router-dom";
-import { FiHome, FiMusic, FiSettings, FiMenu, FiX, FiPlusCircle, FiUser, FiUpload, FiLogOut, FiFile } from "react-icons/fi";
+import { 
+  Avatar, 
+  Box, 
+  Flex, 
+  Icon, 
+  Link, 
+  IconButton, 
+  VStack, 
+  Tooltip, 
+  useDisclosure, 
+  Image, 
+  Modal, 
+  ModalOverlay, 
+  ModalContent, 
+  ModalBody, 
+  Button, 
+  useToast 
+} from "@chakra-ui/react";
+import { Link as RouterLink, useNavigate } from "react-router-dom";
+import { 
+  FiHome, 
+  FiMusic, 
+  FiSettings, 
+  FiMenu, 
+  FiX, 
+  FiPlusCircle, 
+  FiUser, 
+  FiUpload, 
+  FiLogOut, 
+  FiFile, 
+  FiInbox, 
+  FiMoreHorizontal 
+} from "react-icons/fi";
 import { useNavbar } from "../../context/NavbarContext";
 import { useColorMode } from "@chakra-ui/react";
 import { useState, useEffect } from 'react';
@@ -11,16 +41,48 @@ const Navbar = () => {
   const { isNavbarOpen, setIsNavbarOpen } = useNavbar();
   const { colorMode } = useColorMode();
   const location = useLocation();
+  const navigate = useNavigate();
   const { isOpen, onOpen, onClose } = useDisclosure();
   const [isMobile, setIsMobile] = useState(window.innerWidth < 768);
-  const { currentUser } = useUser();
+  const { currentUser, logout } = useUser();
+  const toast = useToast();
+
+  const handleLogout = async () => {
+    try {
+      await logout();
+      toast({
+        title: "Logged out successfully",
+        status: "success",
+        duration: 3000,
+        isClosable: true,
+      });
+      navigate('/auth');
+    } catch (error) {
+      console.error("Error logging out:", error);
+      toast({
+        title: "Error logging out",
+        description: "Please try again",
+        status: "error",
+        duration: 3000,
+        isClosable: true,
+      });
+    }
+  };
 
   const navItems = [
     { icon: FiHome, label: 'Home', path: '/' },
     { icon: FiFile, label: 'Uploads', path: '/uploads' },
-    { icon: FiPlusCircle, label: 'Create', path: '/create' },
-    { icon: FiUser, label: 'Profile', path: `/profile/${currentUser?.uid}` },
-    { icon: FiSettings, label: 'Settings', path: '/settings', mobileAction: onOpen },
+    { icon: FiPlusCircle, label: 'Create', path: '/create', isFeatured: true },
+    { icon: FiUser, label: 'Profile', path: `/profile/${currentUser?.username}` },
+    { icon: FiInbox, label: 'Inbox', path: '/inbox' },
+  ];
+
+  const mobileNavItems = [
+    { icon: FiHome, label: 'Home', path: '/' },
+    { icon: FiFile, label: 'Uploads', path: '/uploads' },
+    { icon: FiPlusCircle, label: 'Create', path: '/create', isFeatured: true },
+    { icon: FiUser, label: 'Profile', path: `/profile/${currentUser?.username}` },
+    { icon: FiMoreHorizontal, label: 'More', path: '#', mobileAction: onOpen },
   ];
 
   const onToggle = () => setIsNavbarOpen(!isNavbarOpen);
@@ -51,6 +113,15 @@ const Navbar = () => {
           <VStack spacing={4}>
             <Button 
               as={RouterLink} 
+              to="/inbox" 
+              width="100%" 
+              leftIcon={<FiInbox />}
+              onClick={onClose}
+            >
+              Inbox
+            </Button>
+            <Button 
+              as={RouterLink} 
               to="/settings" 
               width="100%" 
               leftIcon={<FiSettings />}
@@ -59,14 +130,16 @@ const Navbar = () => {
               Settings
             </Button>
             <Button 
-              as={RouterLink} 
-              to="/auth" 
               width="100%" 
               leftIcon={<FiLogOut />}
               variant="outline"
-              onClick={onClose}
+              onClick={() => {
+                onClose();
+                handleLogout();
+              }}
+              colorScheme="red"
             >
-              Logout
+              Sign Out
             </Button>
           </VStack>
         </ModalBody>
@@ -74,55 +147,62 @@ const Navbar = () => {
     </Modal>
   );
 
-  if (isMobile) {
-    return (
-      <>
-        <Box
-          position="fixed"
-          bottom={0}
-          left={0}
-          right={0}
-          height="70px"
-          borderTop="1px solid"
-          borderColor={colorMode === 'light' ? "blackAlpha.200" : "whiteAlpha.300"}
-          bg={colorMode === 'light' ? "white" : "gray.900"}
-          zIndex={10}
-        >
-          <Flex justifyContent="space-around" alignItems="center" height="100%" px={2}>
-            {navItems.map((item) => (
-              <Box 
-                key={item.path}
-                as={item.mobileAction && item.label === 'Settings' ? 'button' : RouterLink}
-                to={!item.mobileAction ? item.path : undefined}
-                onClick={item.mobileAction || undefined}
-                display="flex"
-                flexDirection="column"
-                alignItems="center"
-                justifyContent="center"
-                width="20%"
-              >
+if (isMobile) {
+  return (
+    <>
+      <Box
+        position="fixed"
+        bottom={0}
+        left={0}
+        right={0}
+        height="60px"
+        borderTop="1px solid"
+        borderColor={colorMode === 'light' ? "blackAlpha.200" : "whiteAlpha.300"}
+        bg={colorMode === 'light' ? "white" : "gray.900"}
+        zIndex={10}
+      >
+        <Flex justifyContent="space-around" alignItems="center" height="100%" px={2}>
+          {mobileNavItems.map((item) => (
+            <Box 
+              key={item.label}
+              as={item.mobileAction ? 'button' : RouterLink}
+              to={!item.mobileAction ? item.path : undefined}
+              onClick={item.mobileAction || undefined}
+              display="flex"
+              alignItems="center"
+              justifyContent="center"
+              width="20%"
+              position="relative"
+            >
+              {item.isFeatured ? (
+                <Box
+                  borderRadius="full"
+                  bg="#578bdd"
+                  p={3}
+                  boxShadow="0 2px 10px rgba(0,0,0,0.2)"
+                >
+                  <Icon 
+                    as={item.icon} 
+                    boxSize={6}
+                    color="white"
+                  />
+                </Box>
+              ) : (
                 <Icon 
                   as={item.icon} 
                   boxSize={6}
-                  color={isLinkActive(item.path) ? "#578bdd" : "inherit"} 
-                  mb={1}
-                />
-                <Box 
-                  fontSize="xs" 
-                  fontWeight={isLinkActive(item.path) ? "medium" : "normal"}
                   color={isLinkActive(item.path) ? "#578bdd" : "inherit"}
-                >
-                  {item.label}
-                </Box>
-              </Box>
-            ))}
-          </Flex>
-        </Box>
-        <MobileSettingsModal />
-        <Box height="70px" width="100%" />
-      </>
-    );
-  }
+                />
+              )}
+            </Box>
+          ))}
+        </Flex>
+      </Box>
+      <MobileSettingsModal />
+      <Box height="60px" width="100%" />
+    </>
+  );
+}
 
   return (
     <Box
@@ -215,30 +295,62 @@ const Navbar = () => {
               </Link>
             </Tooltip>
           ))}
+          
+          <Tooltip label={!isNavbarOpen ? "Settings" : ""} placement="right" hasArrow>
+            <Link
+              as={RouterLink}
+              to="/settings"
+              display="flex"
+              alignItems="center"
+              px={3}
+              py={2}
+              borderRadius="md"
+              bg={isLinkActive("/settings") ? "whiteAlpha.200" : "transparent"}
+              color={isLinkActive("/settings") ? "#578bdd" : "inherit"}
+              _hover={{ bg: "whiteAlpha.200" }}
+            >
+              <Icon 
+                as={FiSettings} 
+                boxSize={5}
+                color={isLinkActive("/settings") ? "#578bdd" : "inherit"} 
+              />
+              {isNavbarOpen && (
+                <Box 
+                  ml={3} 
+                  display={isNavbarOpen ? "block" : "none"}
+                  fontWeight={isLinkActive("/settings") ? "medium" : "normal"}
+                >
+                  Settings
+                </Box>
+              )}
+            </Link>
+          </Tooltip>
         </VStack>
 
         <Box flex="1" />
 
         {/* Logout Button */}
         <Tooltip label={!isNavbarOpen ? "Logout" : ""} placement="right" hasArrow>
-          <Link
-            as={RouterLink}
-            to="/auth"
+          <Box
+            as="button"
             display="flex"
             alignItems="center"
             px={3}
             py={2}
             borderRadius="md"
-            _hover={{ bg: "whiteAlpha.200" }}
+            color="red.500"
+            _hover={{ bg: "red.100", color: "red.600" }}
+            onClick={handleLogout}
             mt="auto"
+            width="100%"
           >
             <Icon as={FiLogOut} boxSize={5} />
             {isNavbarOpen && (
               <Box ml={3} display={isNavbarOpen ? "block" : "none"}>
-                Logout
+                Sign Out
               </Box>
             )}
-          </Link>
+          </Box>
         </Tooltip>
       </Flex>
     </Box>

@@ -77,11 +77,13 @@ const AuthForm = ({ initialMode = true }) => {
           email: inputs.email,
           username: inputs.username || inputs.email.split('@')[0],
           displayName: inputs.username || inputs.email.split('@')[0],
-          profileImage: '', // Default empty
-          bannerImage: '', // Default empty
+          profileImage: '',
+          bannerImage: '',
           createdAt: serverTimestamp(),
           lastLogin: serverTimestamp(),
-          uid: user.uid
+          uid: user.uid,
+          followers: [],
+          following: []
         });
         
         // Store basic user data in localStorage

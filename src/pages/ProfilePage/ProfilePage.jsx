@@ -35,7 +35,12 @@ import {
   InputRightElement,
   Badge,
   Spinner,
-  useToast
+  useToast,
+  Menu,
+  MenuButton,
+  MenuList,
+  MenuItem,
+  Tooltip
 } from '@chakra-ui/react';
 import {
   FiEdit,
@@ -51,35 +56,56 @@ import {
   FiX,
   FiMoreHorizontal,
   FiTrash2,
-  FiStar
+  FiStar,
+  FiUserPlus,
+  FiUserX,
+  FiShare2
 } from 'react-icons/fi';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useNavbar } from "../../context/NavbarContext";
 import { useWaves } from '../../context/WaveContext';
 import { useUser } from '../../context/UserContext';
-import { useRef, useEffect, useState } from 'react';
+import { useRef, useEffect, useState, useCallback } from 'react';
 import { getDownloadURL, ref, uploadBytes } from 'firebase/storage';
 import { storage } from '../../Firebase/firebase';
+import WaveModal from '../../custom_components/WaveModal/WaveModal';
+import FollowersModal from '../../custom_components/FollowersModal/FollowersModal';
+import FollowingModal from '../../custom_components/FollowingModal/FollowingModal';
+import EditProfileModal from '../../custom_components/EditProfileModal/EditProfileModal';
 
 const ProfilePage = () => {
-  const { uid } = useParams();
+  const { username } = useParams();
   const navigate = useNavigate();
   const toast = useToast();
   const { colorMode } = useColorMode();
   const { isNavbarOpen } = useNavbar();
   const { waves, deleteWave, likeWave, addComment, updateUserDataOnWaves } = useWaves();
-  const { currentUser, getUserById, updateProfile, loading: userLoading } = useUser();
+  const { 
+    currentUser, 
+    getUserById, 
+    getUserByUsername,
+    updateProfile,
+    followUser,
+    unfollowUser, 
+    loading: userLoading 
+  } = useUser();  
   const [isMobile, setIsMobile] = useState(window.innerWidth < 768);
   const [selectedWave, setSelectedWave] = useState(null);
-  const [newComment, setNewComment] = useState('');
   const [profileUser, setProfileUser] = useState(null);
   const [loadingProfile, setLoadingProfile] = useState(true);
   const [imageUploading, setImageUploading] = useState(false);
   const { isOpen: isEditModalOpen, onOpen: onEditModalOpen, onClose: onEditModalClose } = useDisclosure();
+  const [isFollowersModalOpen, setIsFollowersModalOpen] = useState(false);
+  const [isFollowingModalOpen, setIsFollowingModalOpen] = useState(false);
   const { isOpen: isWaveModalOpen, onOpen: onWaveModalOpen, onClose: onWaveModalClose } = useDisclosure();
+  const [isFollowLoading, setIsFollowLoading] = useState(false);
   const initialFocusRef = useRef();
   const profileImageRef = useRef();
   const bannerImageRef = useRef();
+
+  const isFollowing = useCallback(() => {
+    return currentUser?.following?.includes(profileUser?.uid) || false;
+  }, [currentUser, profileUser]);
 
   const [formData, setFormData] = useState({
     username: '',
@@ -90,28 +116,41 @@ const ProfilePage = () => {
   // Fetch profile data
   useEffect(() => {
     if (userLoading) return;
-
+  
     setLoadingProfile(true);
-
+  
     const fetchProfile = async () => {
       try {
         let user = null;
-        if (uid) {
-          user = await getUserById(uid);
-          if (!user) {
-            toast({
-              title: "Profile not found",
-              description: "This user profile does not exist.",
-              status: "error",
-              duration: 5000,
-              isClosable: true,
-            });
-            navigate('/');
-            return;
+        
+        // First priority: Check for username in URL
+        if (username) {
+          // If username matches current user, use current user data
+          if (currentUser && username === currentUser.username) {
+            user = currentUser;
+          } else {
+            user = await getUserByUsername(username);
+            if (!user) {
+              toast({
+                title: "Profile not found",
+                description: "This user profile does not exist.",
+                status: "error",
+                duration: 5000,
+                isClosable: true,
+              });
+              navigate('/');
+              return;
+            }
           }
-        } else if (currentUser) {
+        }
+        // Second priority: If no username in URL, show current user's profile
+        else if (currentUser) {
           user = currentUser;
-        } else {
+          // Update URL to include username without page reload
+          navigate(`/profile/${currentUser.username}`, { replace: true });
+        }
+        // Last case: No username in URL and no logged in user
+        else {
           toast({
             title: "Not logged in",
             description: "Please log in to view your profile.",
@@ -122,7 +161,7 @@ const ProfilePage = () => {
           navigate('/auth');
           return;
         }
-
+  
         setProfileUser(user);
       } catch (error) {
         console.error("Error loading profile:", error);
@@ -138,9 +177,9 @@ const ProfilePage = () => {
         setLoadingProfile(false);
       }
     };
-
+  
     fetchProfile();
-  }, [uid, currentUser, getUserById, navigate, toast, userLoading]);
+  }, [username, currentUser, getUserByUsername, navigate, toast, userLoading]);
 
   // Set form data when edit modal opens
   useEffect(() => {
@@ -188,39 +227,23 @@ const ProfilePage = () => {
     }
   };
 
-  const handleLike = (waveId) => {
-    if (!currentUser) {
-      toast({ title: "Login required to like waves", status: "warning", duration: 3000, isClosable: true });
-      return;
-    }
-    likeWave(waveId);
-    if (selectedWave && selectedWave.id === waveId) {
-        const currentUid = currentUser.uid;
-        setSelectedWave(prev => {
-            const alreadyLiked = prev.likedBy?.includes(currentUid);
-            const newLikedBy = alreadyLiked
-                ? prev.likedBy.filter(id => id !== currentUid)
-                : [...(prev.likedBy || []), currentUid];
-            const newLikes = newLikedBy.length;
-
-            return {
-                ...prev,
-                likes: newLikes,
-                likedBy: newLikedBy
-            };
-        });
-    }
-  };
-
   const handleInputChange = (e) => {
     const { name, value } = e.target;
-    setFormData(prev => ({ ...prev, [name]: value }));
+    setFormData(prev => ({ 
+      ...prev, 
+      [name]: value 
+    }));
+  };
+
+  const handleWaveClick = (wave) => {
+    const freshWaveData = waves.find(w => w.id === wave.id);
+    setSelectedWave(freshWaveData || wave);
+    onWaveModalOpen();
   };
 
   const handleImageUpload = async (file, type) => {
     if (!file || !currentUser || !isCurrentUserProfile) return;
     
-    // Validate file type and size
     const validImageTypes = ['image/jpeg', 'image/png', 'image/gif', 'image/webp'];
     if (!validImageTypes.includes(file.type)) {
       toast({
@@ -233,8 +256,7 @@ const ProfilePage = () => {
       return;
     }
     
-    // Limit file size (5MB)
-    const maxSize = 5 * 1024 * 1024; // 5MB
+    const maxSize = 5 * 1024 * 1024;
     if (file.size > maxSize) {
       toast({
         title: "File too large",
@@ -249,7 +271,6 @@ const ProfilePage = () => {
     try {
       setImageUploading(true);
       
-      // Check if the updateUserDataOnWaves function exists before proceeding
       if (typeof updateUserDataOnWaves !== 'function') {
         console.error("WaveContext does not provide updateUserDataOnWaves function.");
         toast({
@@ -262,29 +283,21 @@ const ProfilePage = () => {
         return;
       }
       
-      // Generate a unique filename to avoid storage conflicts
       const fileName = `${Date.now()}_${file.name.replace(/[^a-zA-Z0-9.]/g, '_')}`;
-      
-      // Upload the file to storage
       const storageRef = ref(storage, `users/${currentUser.uid}/${type}/${fileName}`);
       await uploadBytes(storageRef, file);
       const downloadURL = await getDownloadURL(storageRef);
       
-      // Prepare data for profile update
       const updateData = { [`${type}Image`]: downloadURL };
-      
-      // Update user profile in the database
       const success = await updateProfile(updateData);
       
       if (success) {
-        // Update local state
         const updatedUser = {
           ...profileUser,
           ...updateData
         };
         setProfileUser(updatedUser);
         
-        // If this is a profile image update, propagate it to all waves
         if (type === 'profile') {
           const dataToPropagate = {
             profileImage: downloadURL,
@@ -326,108 +339,34 @@ const ProfilePage = () => {
     }
   };
 
-  const handleSubmit = async (e) => {
-    e.preventDefault();
-    if (!currentUser || !isCurrentUserProfile) return;
-    
+  const handleSubmit = async (data) => {
     try {
-      // Validate form data before submission
-      if (!formData.username.trim() || !formData.displayName.trim()) {
-        toast({
-          title: "Missing required fields",
-          description: "Username and display name are required",
-          status: "warning",
-          duration: 3000,
-          isClosable: true,
-        });
-        return;
-      }
-      
-      // First update the profile in the database
-      const success = await updateProfile(formData);
-      
+      // Update profile in database
+      const success = await updateProfile(data);
       if (success) {
-        // Update local state with new information - ensure we're not losing any existing data
-        const updatedUser = {
-          ...profileUser,
-          ...formData
-        };
+        // Refresh user data
+        const updatedUser = await getUserByUsername(username);
         setProfileUser(updatedUser);
-        
-        // Create the data object to propagate to waves
-        const dataToPropagate = {
-          displayName: formData.displayName,
-          username: formData.username,
-          profileImage: profileUser.profileImage  // Keep existing profile image
-        };
-        
-        // Update all waves by this user with the new profile data
-        if (typeof updateUserDataOnWaves === 'function') {
-          await updateUserDataOnWaves(currentUser.uid, dataToPropagate);
-          
-          toast({
-            title: "Profile updated!",
-            description: "Your profile has been updated across all content.",
-            status: "success",
-            duration: 3000,
-            isClosable: true,
-          });
-          
-          onEditModalClose();
-        } else {
-          console.error("WaveContext does not provide updateUserDataOnWaves function.");
-          throw new Error("Cannot update wave data. Function missing.");
-        }
-      } else {
-        throw new Error("Failed to update profile information in the database.");
+        return true;
       }
+      return false;
     } catch (error) {
       console.error("Error updating profile:", error);
       toast({
-        title: "Error updating profile",
-        description: error.message || "Failed to save profile changes to database",
+        title: "Error",
+        description: "Failed to update profile",
         status: "error",
         duration: 5000,
         isClosable: true,
       });
+      return false;
     }
   };
 
-  const handleWaveClick = (wave) => {
-    const freshWaveData = waves.find(w => w.id === wave.id);
-    setSelectedWave(freshWaveData || wave);
-    onWaveModalOpen();
+  const handleDeleteSuccess = () => {
+    // Refresh the page or update state as needed
   };
 
-  const handleAddComment = async () => {
-    if (!newComment.trim() || !selectedWave || !currentUser) {
-      if (!currentUser) toast({ title: "Login required to comment", status: "warning", duration: 3000, isClosable: true });
-      return;
-    }
-
-    const commentData = {
-      id: Date.now().toString() + Math.random().toString(36).substring(2),
-      userId: currentUser.uid,
-      username: currentUser.username,
-      displayName: currentUser.displayName,
-      profileImage: currentUser.profileImage,
-      content: newComment,
-      timestamp: new Date().toISOString()
-    };
-    try {
-        await addComment(selectedWave.id, commentData);
-        setSelectedWave(prev => ({
-          ...prev,
-          commentsList: [...(prev.commentsList || []), commentData].sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp)),
-          comments: (prev.comments || 0) + 1,
-        }));
-        setNewComment('');
-
-      } catch (error) {
-        console.error("Error adding comment:", error);
-        toast({ title: "Error adding comment", description: error.message, status: "error", duration: 3000, isClosable: true });
-      }
-  };
   const renderWaveThumbnail = (wave) => {
     if (!wave || !wave.id) return null;
 
@@ -471,15 +410,12 @@ const ProfilePage = () => {
           )}
 
           {wave.mediaType === 'audio' && (
-            <Flex
-              height="100%" align="center" justify="center" >
-              <Icon as={FiMusic} boxSize={10} color={colorMode === 'dark' ?
-                'gray.300' : 'gray.600'} />
+            <Flex height="100%" align="center" justify="center">
+              <Icon as={FiMusic} boxSize={10} color={colorMode === 'dark' ? 'gray.300' : 'gray.600'} />
             </Flex>
           )}
 
-         {(!wave.mediaType || !['image', 'video', 'audio'].includes(wave.mediaType)) && !wave.mediaUrls?.[0]
-          && (
+         {(!wave.mediaType || !['image', 'video', 'audio'].includes(wave.mediaType)) && !wave.mediaUrls?.[0] && (
              <Flex height="100%" align="center" justify="center" p={4}>
                  <Text color="gray.500" textAlign="center" noOfLines={3}>
                      {wave.content ? `"${wave.content}"` : "Text Wave"}
@@ -498,19 +434,15 @@ const ProfilePage = () => {
         </Box>
 
         <Box p={3}>
-          <Text fontWeight="bold" noOfLines={1} title={wave.title ||
-            'Untitled Wave'}>{wave.title || 'Untitled Wave'}</Text>
-          <HStack mt={2} spacing={3} color={colorMode === 'dark' ?
-            "gray.400" : "gray.600"}>
+          <Text fontWeight="bold" noOfLines={1} title={wave.title || 'Untitled Wave'}>{wave.title || 'Untitled Wave'}</Text>
+          <HStack mt={2} spacing={3} color={colorMode === 'dark' ? "gray.400" : "gray.600"}>
             <HStack spacing={1}>
               <Icon as={FiHeart} boxSize={4} />
-              <Text fontSize="sm">{wave.likes ||
-                0}</Text>
+              <Text fontSize="sm">{wave.likes || 0}</Text>
             </HStack>
             <HStack spacing={1}>
               <Icon as={FiMessageCircle} boxSize={4} />
-              <Text fontSize="sm">{wave.comments ||
-                0}</Text>
+              <Text fontSize="sm">{wave.comments || 0}</Text>
             </HStack>
           </HStack>
         </Box>
@@ -534,6 +466,59 @@ const ProfilePage = () => {
     )
   }
 
+  const handleFollowAction = async () => {
+    if (!currentUser || !profileUser) {
+      toast({
+        title: "Authentication required",
+        description: "Please log in to follow users",
+        status: "error",
+        duration: 3000,
+        isClosable: true,
+      });
+      return;
+    }
+
+    setIsFollowLoading(true);
+    try {
+      const success = isFollowing()
+        ? await unfollowUser(profileUser.uid)
+        : await followUser(profileUser.uid);
+
+      if (success) {
+        // Update the local profileUser state to reflect the new follower count
+        setProfileUser(prev => ({
+          ...prev,
+          followers: isFollowing()
+            ? prev.followers.filter(id => id !== currentUser.uid)
+            : [...prev.followers, currentUser.uid]
+        }));
+
+        toast({
+          title: isFollowing() ? "Unfollowed" : "Following",
+          description: isFollowing()
+            ? `You unfollowed ${profileUser.displayName}`
+            : `You are now following ${profileUser.displayName}`,
+          status: "success",
+          duration: 2000,
+          isClosable: true,
+        });
+      } else {
+        throw new Error("Failed to update follow status");
+      }
+    } catch (error) {
+      console.error("Follow action error:", error);
+      toast({
+        title: "Error",
+        description: "Failed to update follow status. Please try again.",
+        status: "error",
+        duration: 3000,
+        isClosable: true,
+      });
+    } finally {
+      setIsFollowLoading(false);
+    }
+  };
+
   return (
     <Box
       width="100vw"
@@ -555,20 +540,40 @@ const ProfilePage = () => {
           objectFit="cover"
           fallbackSrc='/default-banner.jpg'
         />
-        {isCurrentUserProfile && (
-          <Button
-            position="absolute"
-            bottom="4"
-            right="4"
-            leftIcon={<FiEdit />}
-            onClick={onEditModalOpen}
-            colorScheme="blue"
-            size="sm"
-            aria-label="Edit Profile"
-          >
-            Edit Profile
-          </Button>
-        )}
+        <Box position="absolute" bottom="4" right="4">
+          {isCurrentUserProfile ? (
+            <Button
+              leftIcon={<FiEdit />}
+              onClick={onEditModalOpen}
+              colorScheme="blue"
+              size="sm"
+              aria-label="Edit Profile"
+            >
+              Edit Profile
+            </Button>
+          ) : (
+            <Menu>
+              <MenuButton as={Button} size="sm" rightIcon={<FiMoreHorizontal />}>
+                Options
+              </MenuButton>
+              <MenuList>
+                <MenuItem icon={<FiShare2 />} onClick={() => {
+                  navigator.clipboard.writeText(window.location.href);
+                  toast({
+                    title: "Link copied!",
+                    description: "Profile link copied to clipboard",
+                    status: "success",
+                    duration: 2000,
+                    isClosable: true,
+                  });
+                }}>
+                  Share Profile
+                </MenuItem>
+                {/* Add more options here if needed */}
+              </MenuList>
+            </Menu>
+          )}
+        </Box>
       </Box>
 
       {/* Profile Info Section */}
@@ -585,8 +590,7 @@ const ProfilePage = () => {
           direction={{ base: 'column', md: 'row' }}
           align={{ base: 'center', md: 'flex-end' }}
           gap={6}
-          bg={colorMode === 'dark' ?
-            'gray.800' : 'white'}
+          bg={colorMode === 'dark' ? 'gray.800' : 'white'}
           p={{ base: 4, md: 6 }}
           borderRadius="lg"
           boxShadow="md"
@@ -596,22 +600,27 @@ const ProfilePage = () => {
             name={profileUser.displayName}
             size={{ base: "xl", md: "2xl" }}
             borderWidth="4px"
-            borderColor={colorMode === 'dark' ?
-              'gray.800' : 'white'}
-            mt={isCurrentUserProfile ?
-              { base: "-40px", md: "-60px" } : "-30px"}
+            borderColor={colorMode === 'dark' ? 'gray.800' : 'white'}
+            mt={isCurrentUserProfile ? { base: "-40px", md: "-60px" } : "-30px"}
             ml={{ base: 0, md: 0 }}
             showBorder
+            cursor="pointer"
+            onClick={() => {
+              if (!isCurrentUserProfile) {
+                window.open(profileUser.profileImage || '/default-profile.jpg', '_blank');
+              }
+            }}
+            _hover={{
+              transform: isCurrentUserProfile ? 'none' : 'scale(1.05)',
+              transition: 'transform 0.2s'
+            }}
           />
 
           <VStack align={{ base: 'center', md: 'flex-start' }} spacing={1} flex="1" pt={{ base: 4, md: 0 }}>
-            <Heading size={{ base: "lg", md: "xl" }}>{profileUser.displayName ||
-              'User Name'}</Heading>
-            <Text color="gray.500">@{profileUser.username ||
-              'username'}</Text>
+            <Heading size={{ base: "lg", md: "xl" }}>{profileUser.displayName || 'User Name'}</Heading>
+            <Text color="gray.500">@{profileUser.username || 'username'}</Text>
             <Text maxWidth="600px" textAlign={{ base: 'center', md: 'left' }} pt={2} pb={2}>
-              {profileUser.bio ||
-                'No bio yet.'}
+              {profileUser.bio || 'No bio yet.'}
             </Text>
 
             <HStack spacing={{ base: 4, md: 6 }} mt={3} justify={{ base: "center", md: "flex-start" }} width="100%">
@@ -619,17 +628,53 @@ const ProfilePage = () => {
                 <Text fontWeight="bold">{userWaves.length}</Text>
                 <Text fontSize="sm" color="gray.500">Waves</Text>
               </VStack>
-              <VStack spacing={0}>
-                <Text fontWeight="bold">{profileUser.followers?.length ||
-                  0}</Text>
+              <VStack 
+                spacing={0} 
+                cursor="pointer" 
+                onClick={() => setIsFollowersModalOpen(true)}
+                _hover={{ opacity: 0.8 }}
+              >
+                <Text fontWeight="bold">{profileUser.followers?.length || 0}</Text>
                 <Text fontSize="sm" color="gray.500">Followers</Text>
               </VStack>
-              <VStack spacing={0}>
-                <Text fontWeight="bold">{profileUser.following?.length ||
-                  0}</Text>
+              <VStack 
+                spacing={0} 
+                cursor="pointer"
+                onClick={() => setIsFollowingModalOpen(true)}
+                _hover={{ opacity: 0.8 }}
+              >
+                <Text fontWeight="bold">{profileUser.following?.length || 0}</Text>
                 <Text fontSize="sm" color="gray.500">Following</Text>
               </VStack>
             </HStack>
+
+            // Add these components before the closing Box tag
+            <FollowersModal
+              isOpen={isFollowersModalOpen}
+              onClose={() => setIsFollowersModalOpen(false)}
+              followers={profileUser.followers || []}
+              profileUsername={profileUser.username}
+            />
+            <FollowingModal
+              isOpen={isFollowingModalOpen}
+              onClose={() => setIsFollowingModalOpen(false)}
+              following={profileUser.following || []}
+              profileUsername={profileUser.username}
+            />
+            
+            {!isCurrentUserProfile && currentUser && (
+              <Button 
+              colorScheme={isFollowing() ? "gray" : "blue"}
+              size="sm"
+              mt={4}
+              onClick={handleFollowAction}
+              isLoading={isFollowLoading}
+              loadingText={isFollowing() ? "Unfollowing..." : "Following..."}
+              leftIcon={isFollowing() ? <Icon as={FiUserX} /> : <Icon as={FiUserPlus} />}
+            >
+              {isFollowing() ? "Unfollow" : "Follow"}
+            </Button>
+            )}
           </VStack>
         </Flex>
 
@@ -643,10 +688,8 @@ const ProfilePage = () => {
 
             <TabPanels>
               {/* User's Waves Tab */}
-              <TabPanel
-                p={0}>
-                {userWaves.length > 0 ?
-                  (
+              <TabPanel p={0}>
+                {userWaves.length > 0 ? (
                   <Grid
                     templateColumns={{
                       base: 'repeat(auto-fill, minmax(200px, 1fr))',
@@ -655,9 +698,8 @@ const ProfilePage = () => {
                     gap={4}
                   >
                     {userWaves
-                       .sort((a, b) => new Date(b.timestamp || 0) - new Date(a.timestamp ||
-                         0))
-                       .map(wave => renderWaveThumbnail(wave))
+                      .sort((a, b) => new Date(b.timestamp || 0) - new Date(a.timestamp || 0))
+                      .map(wave => renderWaveThumbnail(wave))
                     }
                   </Grid>
                 ) : (
@@ -682,19 +724,17 @@ const ProfilePage = () => {
 
               {/* Liked Waves Tab */}
               <TabPanel p={0}>
-                {likedWaves.length > 0 ?
-                  (
+                {likedWaves.length > 0 ? (
                   <Grid
-                     templateColumns={{
-                       base: 'repeat(auto-fill, minmax(200px, 1fr))',
-                       md: 'repeat(auto-fill, minmax(240px, 1fr))',
-                     }}
-                     gap={4}
+                    templateColumns={{
+                      base: 'repeat(auto-fill, minmax(200px, 1fr))',
+                      md: 'repeat(auto-fill, minmax(240px, 1fr))',
+                    }}
+                    gap={4}
                   >
-                     {likedWaves
-                       .sort((a, b) => new Date(b.timestamp
-                         || 0) - new Date(a.timestamp || 0))
-                       .map(wave => renderWaveThumbnail(wave))}
+                    {likedWaves
+                      .sort((a, b) => new Date(b.timestamp || 0) - new Date(a.timestamp || 0))
+                      .map(wave => renderWaveThumbnail(wave))}
                   </Grid>
                 ) : (
                   <Box textAlign="center" py={10} px={6} borderWidth="1px" borderRadius="lg" bg={colorMode === 'dark' ? 'gray.800' : 'white'}>
@@ -703,7 +743,7 @@ const ProfilePage = () => {
                       No Liked Waves
                     </Heading>
                     <Text fontSize="lg" color="gray.500">
-                      {isCurrentUserProfile ? "Waves you like will appear here." : "This user hasn't liked any waves yet."}
+                      {isCurrentUserProfile ? "Waves you like will appear here." : `${profileUser.displayName} hasn't liked any waves yet.`}
                     </Text>
                   </Box>
                 )}
@@ -713,317 +753,26 @@ const ProfilePage = () => {
         </Box>
       </Flex>
 
-      {/* Edit Profile Modal */}
+      {/* Edit Profile Modal - Only show for current user */}
       {isCurrentUserProfile && (
-        <Modal isOpen={isEditModalOpen} onClose={onEditModalClose} size="xl" initialFocusRef={initialFocusRef}>
-          <ModalOverlay />
-          <ModalContent bg={colorMode === 'dark' ? 'gray.800' : 'white'}>
-            <ModalHeader borderBottomWidth="1px">Edit Profile</ModalHeader>
-            <ModalCloseButton />
-            <form onSubmit={handleSubmit}>
-              <ModalBody>
-                <VStack spacing={6} py={4}>
-                  {/* Profile Picture Upload */}
-                  <FormControl>
-                    <FormLabel>Profile Picture</FormLabel>
-                     <input
-                       type="file"
-                       accept="image/*"
-                       ref={profileImageRef}
-                       onChange={(e) => e.target.files && handleImageUpload(e.target.files[0], 'profile')}
-                       style={{ display: 'none' }}
-                       id="profile-upload"
-                     />
-                     <Flex align="center" gap={4}>
-                       <Avatar
-                         size="xl"
-                         src={profileUser.profileImage}
-                         name={profileUser.displayName}
-                       />
-                       <Button
-                         onClick={() => profileImageRef.current?.click()}
-                         isLoading={imageUploading}
-                         loadingText="Uploading..."
-                         variant="outline"
-                         leftIcon={<FiImage />}
-                       >
-                         Change Photo
-                       </Button>
-                     </Flex>
-                  </FormControl>
-
-                  {/* Banner Image Upload */}
-                  <FormControl>
-                    <FormLabel>Banner Image</FormLabel>
-                    <input
-                       type="file"
-                       accept="image/*"
-                       ref={bannerImageRef}
-                       onChange={(e) => e.target.files && handleImageUpload(e.target.files[0], 'banner')}
-                       style={{ display: 'none' }}
-                       id="banner-upload"
-                      />
-                    <Box position="relative" height="150px" borderRadius="md" overflow="hidden" borderWidth="1px" bg={colorMode === 'dark' ?
-                      'gray.700' : 'gray.200'}>
-                        <Image
-                          src={profileUser.bannerImage ||
-                            '/default-banner.jpg'}
-                          alt="Banner preview"
-                          width="100%"
-                          height="100%"
-                          objectFit="cover"
-                          fallbackSrc='/default-banner.jpg'
-                        />
-                        <Button
-                          position="absolute"
-                          bottom="4"
-                          right="4"
-                          size="sm"
-                          onClick={() => bannerImageRef.current?.click()}
-                          isLoading={imageUploading}
-                          loadingText="Uploading..."
-                          variant="solid"
-                          colorScheme='blackAlpha'
-                          leftIcon={<FiImage />}
-                         >
-                          Change Banner
-                        </Button>
-                      </Box>
-                  </FormControl>
-
-                  {/* Text Inputs */}
-                  <FormControl isRequired>
-                    <FormLabel>Display Name</FormLabel>
-                     <Input
-                       ref={initialFocusRef}
-                       name="displayName"
-                       value={formData.displayName}
-                       onChange={handleInputChange}
-                       placeholder="Your display name"
-                      />
-                  </FormControl>
-
-                  <FormControl isRequired>
-                    <FormLabel>Username</FormLabel>
-                     <Input
-                       name="username"
-                       value={formData.username}
-                       onChange={handleInputChange}
-                       placeholder="Your unique username"
-                      />
-                  </FormControl>
-
-                  <FormControl>
-                    <FormLabel>Bio</FormLabel>
-                     <Textarea
-                       name="bio"
-                       value={formData.bio}
-                       onChange={handleInputChange}
-                       placeholder="Tell us about yourself"
-                       rows={4}
-                      />
-                  </FormControl>
-                </VStack>
-              </ModalBody>
-              <ModalFooter borderTopWidth="1px">
-                <Button variant="ghost" mr={3} onClick={onEditModalClose}>
-                  Cancel
-                </Button>
-                <Button colorScheme="blue" type="submit" isLoading={imageUploading}>
-                  Save Changes
-                </Button>
-              </ModalFooter>
-            </form>
-          </ModalContent>
-        </Modal>
-      )}
+      <EditProfileModal
+        isOpen={isEditModalOpen}
+        onClose={onEditModalClose}
+        profileUser={profileUser}
+        onUpdateProfile={handleSubmit}
+        onImageUpload={handleImageUpload}
+        imageUploading={imageUploading}
+      />
+    )}
 
       {/* Wave Detail Modal */}
       {selectedWave && (
-        <Modal isOpen={isWaveModalOpen} onClose={onWaveModalClose} size={{ base: "full", md: "4xl", lg: "6xl" }} scrollBehavior="inside">
-          <ModalOverlay />
-          <ModalContent bg={colorMode === 'dark' ?
-            'gray.800' : 'white'} maxH={{ base: "100vh", md: "90vh" }}>
-            <ModalHeader borderBottomWidth="1px">
-              <Flex justify="space-between" align="center">
-                <HStack>
-                  <Avatar src={selectedWave.profileImage} name={selectedWave.displayName} size="md" mr={2} />
-                  <Box>
-                    <Text fontWeight="bold">{selectedWave.displayName}</Text>
-                    <Text fontSize="sm" color="gray.500">
-                      @{selectedWave.username} • {formatTimestamp(selectedWave.timestamp)}
-                    </Text>
-                  </Box>
-                </HStack>
-              </Flex>
-            </ModalHeader>
-            <ModalCloseButton />
-            <ModalBody p={0}>
-                <Flex direction={{ base: 'column', lg: 'row' }} maxH={{ base: "calc(100vh - 60px)", md: "calc(90vh - 60px)" }}>
-                  {/* Media Column */}
-                  <Flex
-                     flex={{ base: "none", lg: 2 }}
-                     justify="center"
-                     align="center"
-                     p={{ base: 2, md: 4 }}
-                     bg={colorMode === 'dark' ?
-                        'black' : 'gray.50'}
-                     maxHeight={{ base: "50vh", lg: "100%" }}
-                     overflow="hidden"
-                     position="relative"
-                  >
-                    {selectedWave.mediaType === 'image' && selectedWave.mediaUrls?.[0]
-                      && (
-                      <Image
-                        src={selectedWave.mediaUrls[0]}
-                        alt={selectedWave.title || 'Wave Image'}
-                        maxW="100%"
-                        maxH="100%"
-                        objectFit="contain"
-                        fallbackSrc='/placeholder-image.jpg'
-                      />
-                    )}
-                    {selectedWave.mediaType === 'video' && selectedWave.mediaUrls?.[0]
-                      && (
-                      <Box as="video" src={selectedWave.mediaUrls[0]} controls width="100%" maxH="100%" objectFit="contain" poster={selectedWave.thumbnailUrl} />
-                    )}
-                    {selectedWave.mediaType === 'audio' && selectedWave.mediaUrls?.[0]
-                      && (
-                      <VStack spacing={4} p={{ base: 4, md: 6 }} width="100%" justify="center">
-                         <Icon as={FiMusic} boxSize={16} color={colorMode === 'dark' ? 'blue.300' : 'blue.500'} />
-                         <Text fontWeight="bold" textAlign="center">{selectedWave.title}</Text>
-                        <Box as="audio" src={selectedWave.mediaUrls[0]} controls width="100%" />
-                      </VStack>
-                    )}
-                     {(!selectedWave.mediaUrls || selectedWave.mediaUrls.length === 0) && !['image', 'video', 'audio'].includes(selectedWave.mediaType) && (
-                      <Box p={{ base: 4, md: 10 }} overflowY="auto" maxH="100%">
-                            <Heading size="lg" mb={3}>{selectedWave.title || "Untitled Wave"}</Heading>
-                            <Text whiteSpace="pre-wrap" fontSize="md">{selectedWave.content || "No description."}</Text>
-                      </Box>
-                     )}
-                  </Flex>
-
-                  {/* Details & Comments Column */}
-                  <Box
-                    flex={{ base: "none", lg: 1 }}
-                     p={{ base: 4, md: 6 }}
-                     maxHeight={{ base: "50vh", lg: "100%" }}
-                     overflowY="auto"
-                     borderLeftWidth={{ base: 0, lg: "1px" }}
-                     borderColor={colorMode === 'dark' ?
-                        'gray.700' : 'gray.200'}
-                  >
-                     {(selectedWave.mediaUrls && selectedWave.mediaUrls.length > 0) && (
-                       <Box mb={4}>
-                          <Heading size="lg" mb={3}>{selectedWave.title
-                            || "Untitled Wave"}</Heading>
-                          <Text whiteSpace="pre-wrap">{selectedWave.content || "No description."}</Text>
-                       </Box>
-                      )}
-
-                    <HStack mt={(selectedWave.mediaUrls &&
-                      selectedWave.mediaUrls.length > 0) ? 4 : 0} mb={4} spacing={4} color={colorMode === 'dark' ?
-                      "gray.400" : "gray.600"} align="center">
-                      <Button
-                        leftIcon={<FiHeart fill={selectedWave.likedBy?.includes(currentUser?.uid) ?
-                          'currentColor' : 'none'} />}
-                        onClick={() => handleLike(selectedWave.id)}
-                        variant="ghost"
-                        size="sm"
-                        colorScheme={selectedWave.likedBy?.includes(currentUser?.uid) ? 'red' : 'gray'}
-                      >
-                        {selectedWave.likes ||
-                          0} {selectedWave.likes === 1 ? 'Like' : 'Likes'}
-                      </Button>
-                      <HStack spacing={1}>
-                        <Icon as={FiMessageCircle} />
-                        <Text fontSize="sm">{selectedWave.comments || 0} {selectedWave.comments === 1 ?
-                          'Comment' : 'Comments'}</Text>
-                      </HStack>
-                    </HStack>
-
-                    {isCurrentUserProfile && selectedWave.userId === currentUser?.uid && (
-                      <Button
-                        leftIcon={<FiTrash2 />}
-                        colorScheme='red'
-                        variant='outline'
-                        size='sm'
-                        mt={2}
-                        mb={4}
-                        onClick={async () => {
-                          try {
-                            await deleteWave(selectedWave.id);
-                              onWaveModalClose();
-                              toast({ title: "Wave deleted", status: "info", duration: 2000 });
-                          } catch (error) {
-                              toast({ title: "Error deleting wave", status: "error", duration: 3000 });
-                          }
-                        }}
-                      >
-                        Delete Wave
-                      </Button>
-                    )}
-
-                    <Divider my={4}/>
-
-                    <Heading size="md" mb={4}>Comments ({selectedWave.commentsList?.length ||
-                      0})</Heading>
-
-                     {currentUser && (
-                      <InputGroup mb={4}>
-                        <Input
-                          placeholder="Add a public comment..."
-                          value={newComment}
-                          onChange={(e) => setNewComment(e.target.value)}
-                          onKeyPress={(e) => { if (e.key === 'Enter') handleAddComment(); }}
-                          pr="4.5rem"
-                        />
-                        <InputRightElement width="4.5rem">
-                          <IconButton
-                            h="1.75rem"
-                            size="sm"
-                            icon={<FiSend />}
-                            aria-label="Send comment"
-                            onClick={handleAddComment}
-                            isDisabled={!newComment.trim()}
-                            colorScheme='blue'
-                          />
-                        </InputRightElement>
-                      </InputGroup>
-                    )}
-                    {!currentUser &&
-                      <Text fontSize="sm" color="gray.500" mb={4}>Log in to add a comment.</Text>}
-
-                    {/* Comments List */}
-                    <VStack align="stretch" spacing={4}>
-                      {(selectedWave.commentsList && selectedWave.commentsList.length > 0) ?
-                        (
-                         selectedWave.commentsList
-                           .sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp))
-                           .map(comment => (
-                          <Box key={comment.id} p={3} bg={colorMode === 'dark' ? 'rgba(255,255,255,0.05)' : 'gray.50'} borderRadius="md">
-                               <Flex justify="space-between" align="center" mb={1}>
-                                 <HStack>
-                                    <Avatar src={comment.profileImage} name={comment.displayName} size="sm" />
-                                    <Text fontWeight="bold" fontSize="sm">{comment.displayName}</Text>
-                                    <Text fontSize="xs" color="gray.500">• @{comment.username}</Text>
-                                 </HStack>
-                                 <Text fontSize="xs" color="gray.500" whiteSpace="nowrap" ml={2}>
-                                    {formatTimestamp(comment.timestamp)}
-                                 </Text>
-                               </Flex>
-                               <Text fontSize="sm" pl={10}>{comment.content}</Text>
-                             </Box>
-                         ))
-                       ) : (
-                        <Text color="gray.500" textAlign="center" pt={4}>No comments yet.</Text>
-                       )}
-                    </VStack>
-                  </Box>
-                </Flex>
-            </ModalBody>
-          </ModalContent>
-        </Modal>
+        <WaveModal
+          wave={selectedWave}
+          isOpen={isWaveModalOpen}
+          onClose={onWaveModalClose}
+          onDeleteSuccess={handleDeleteSuccess}
+        />
       )}
     </Box>
   );
