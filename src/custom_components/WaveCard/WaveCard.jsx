@@ -4,111 +4,98 @@ import {
   Flex,
   Avatar,
   Text,
-  Heading,
   Image,
   IconButton,
-  Tag,
+  Badge,
   HStack,
   VStack,
-  Icon,
-  Menu,
-  MenuButton,
-  MenuList,
-  MenuItem,
   useDisclosure,
-  AlertDialog,
-  AlertDialogBody,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogContent,
-  AlertDialogOverlay,
+  Icon,
   Button,
-  Input,
-  Collapse,
   useColorMode,
   useToast,
-  Skeleton,
-  SkeletonCircle,
   AspectRatio,
   Spinner,
   Slider,
   SliderTrack,
   SliderFilledTrack,
   SliderThumb,
-  Popover,
-  PopoverTrigger,
-  PopoverContent,
-  PopoverBody
+  Progress,
+  Drawer,
+  DrawerBody,
+  DrawerHeader,
+  DrawerOverlay,
+  DrawerContent,
+  DrawerCloseButton,
+  Tooltip,
+  Center,
 } from '@chakra-ui/react';
 import { 
   FiHeart, 
   FiMessageSquare, 
-  FiEye, 
   FiStar, 
-  FiMoreHorizontal, 
-  FiTrash2, 
-  FiSend, 
-  FiTrash,
-  FiChevronUp,
-  FiChevronDown,
+  FiMoreHorizontal,
   FiPlay,
-  FiVolume,
-  FiVolume1,
+  FiPause,
+  FiVolumeX,
   FiVolume2,
-  FiVolumeX
+  FiShare2,
+  FiTrash2,
+  FiBookmark,
+  FiBell,
+  FiZap,
+  FiMapPin
 } from 'react-icons/fi';
-import { doc, getDoc, deleteDoc, updateDoc, arrayUnion, increment, arrayRemove } from 'firebase/firestore';
+import { doc, getDoc, deleteDoc, updateDoc, arrayUnion, increment, arrayRemove, onSnapshot } from 'firebase/firestore';
 import { db } from '../../Firebase/firebase';
 import { useNavigate } from 'react-router-dom';
 
-const WaveCard = ({ wave, currentUser, compactMode = false }) => {
+const WaveCard = ({ wave, currentUser, onCommentsClick = false }) => {
   const { colorMode } = useColorMode();
   const isDark = colorMode === 'dark';
   const { isOpen, onOpen, onClose } = useDisclosure();
-  const [showComments, setShowComments] = useState(false);
-  const [newComment, setNewComment] = useState('');
-  const [replyingTo, setReplyingTo] = useState(null);
-  const [replyText, setReplyText] = useState('');
-  const [expandedComments, setExpandedComments] = useState(new Set());
+  const { isOpen: isDrawerOpen, onOpen: onDrawerOpen, onClose: onDrawerClose } = useDisclosure();
   const [authorData, setAuthorData] = useState(null);
-  const [loadingAuthor, setLoadingAuthor] = useState(true);
-  const [commentUserData, setCommentUserData] = useState({});
-  const [loadingCommentUsers, setLoadingCommentUsers] = useState(false);
-  const [localComments, setLocalComments] = useState(wave.commentsList || []);
+  const [waveData, setWaveData] = useState(wave);
   const [localLikes, setLocalLikes] = useState({
-    wave: {
-      count: wave.likes || 0,
-      isLiked: wave.likedBy?.includes(currentUser?.uid) || false
-    },
-    comments: {}
+    count: wave.likes || 0,
+    isLiked: wave.likedBy?.includes(currentUser?.uid) || false
   });
+  const [isSaved, setIsSaved] = useState(wave.savedBy?.includes(currentUser?.uid) || false);
 
   // Video player state
   const videoRef = useRef(null);
   const [isVideoPlaying, setIsVideoPlaying] = useState(false);
   const [isVideoMuted, setIsVideoMuted] = useState(true);
+  const [videoProgress, setVideoProgress] = useState(0);
   const [videoVolume, setVideoVolume] = useState(0.5);
   const [hasVideoPlayed, setHasVideoPlayed] = useState(false);
   const [isVideoInView, setIsVideoInView] = useState(false);
-  const [showVolumeSlider, setShowVolumeSlider] = useState(false);
-  const [isVolumeHovered, setIsVolumeHovered] = useState(false);
-  const [volumeTimeout, setVolumeTimeout] = useState(null);
-
+  
   const cancelRef = useRef();
   const toast = useToast();
   const navigate = useNavigate();
 
-  // Initialize local state
   useEffect(() => {
-    setLocalComments(wave.commentsList || []);
-    setLocalLikes({
-      wave: {
-        count: wave.likes || 0,
-        isLiked: wave.likedBy?.includes(currentUser?.uid) || false
-      },
-      comments: {}
+    if (!wave.id) return;
+  
+    const waveRef = doc(db, 'waves', wave.id);
+    const unsubscribe = onSnapshot(waveRef, (doc) => {
+      if (doc.exists()) {
+        const data = doc.data();
+        setWaveData(data);
+        
+        setLocalLikes({
+          count: data.likes || 0,
+          isLiked: data.likedBy?.includes(currentUser?.uid) || false
+        });
+        
+        setIsSaved(data.savedBy?.includes(currentUser?.uid) || false);
+      }
     });
-  }, [wave.commentsList, wave.likes, wave.likedBy, currentUser?.uid]);
+  
+    return () => unsubscribe();
+  }, [wave.id, currentUser?.uid]);
 
   // Intersection Observer for video autoplay
   useEffect(() => {
@@ -121,7 +108,7 @@ const WaveCard = ({ wave, currentUser, compactMode = false }) => {
           
           if (entry.isIntersecting) {
             if (videoRef.current) {
-              videoRef.current.currentTime = 0; // Reset video to start
+              videoRef.current.currentTime = 0;
               videoRef.current.play()
                 .then(() => {
                   setIsVideoPlaying(true);
@@ -149,8 +136,8 @@ const WaveCard = ({ wave, currentUser, compactMode = false }) => {
         });
       },
       {
-        threshold: 0.8,
-        rootMargin: '0px 0px -100px 0px'
+        threshold: 0.6,
+        rootMargin: '0px 0px -50px 0px'
       }
     );
   
@@ -162,6 +149,29 @@ const WaveCard = ({ wave, currentUser, compactMode = false }) => {
       }
     };
   }, [wave.mediaType]);
+
+  // Video progress tracking
+  useEffect(() => {
+    if (!videoRef.current || wave.mediaType !== 'video') return;
+    
+    const updateProgress = () => {
+      if (videoRef.current) {
+        const duration = videoRef.current.duration;
+        const currentTime = videoRef.current.currentTime;
+        if (duration > 0) {
+          setVideoProgress((currentTime / duration) * 100);
+        }
+      }
+    };
+    
+    videoRef.current.addEventListener('timeupdate', updateProgress);
+    
+    return () => {
+      if (videoRef.current) {
+        videoRef.current.removeEventListener('timeupdate', updateProgress);
+      }
+    };
+  }, [wave.mediaType, isVideoPlaying]);
 
   // Update video element when volume changes
   useEffect(() => {
@@ -175,7 +185,6 @@ const WaveCard = ({ wave, currentUser, compactMode = false }) => {
   useEffect(() => {
     const fetchAuthorData = async () => {
       try {
-        setLoadingAuthor(true);
         if (wave.userId) {
           const userRef = doc(db, 'users', wave.userId);
           const userSnap = await getDoc(userRef);
@@ -191,61 +200,16 @@ const WaveCard = ({ wave, currentUser, compactMode = false }) => {
         }
       } catch (error) {
         console.error('Error fetching author data:', error);
-        toast({
-          title: 'Error',
-          description: 'Could not load author information',
-          status: 'error',
-          duration: 3000,
-          isClosable: true,
-        });
         setAuthorData({
           displayName: wave.displayName || 'User',
           username: wave.username || 'user',
           profileImage: wave.profileImage || '/default-avatar.png'
         });
-      } finally {
-        setLoadingAuthor(false);
       }
     };
 
     fetchAuthorData();
-  }, [wave.userId, wave.displayName, wave.username, wave.profileImage, toast]);
-
-  // Fetch comment users data
-  useEffect(() => {
-    const fetchCommentUsersData = async () => {
-      if (!showComments || !localComments || localComments.length === 0) return;
-      
-      try {
-        setLoadingCommentUsers(true);
-        const userData = {};
-        const uniqueUserIds = [...new Set(localComments.map(comment => comment.userId))];
-        
-        await Promise.all(uniqueUserIds.map(async (userId) => {
-          if (!userId) return;
-          
-          try {
-            const userRef = doc(db, 'users', userId);
-            const userSnap = await getDoc(userRef);
-            
-            if (userSnap.exists()) {
-              userData[userId] = userSnap.data();
-            }
-          } catch (error) {
-            console.error(`Error fetching data for user ${userId}:`, error);
-          }
-        }));
-        
-        setCommentUserData(userData);
-      } catch (error) {
-        console.error('Error fetching comment users data:', error);
-      } finally {
-        setLoadingCommentUsers(false);
-      }
-    };
-
-    fetchCommentUsersData();
-  }, [showComments, localComments]);
+  }, [wave.userId, wave.displayName, wave.username, wave.profileImage]);
 
   const formatTimestamp = (dateString) => {
     if (!dateString) return '';
@@ -279,29 +243,16 @@ const WaveCard = ({ wave, currentUser, compactMode = false }) => {
   const toggleMute = (e) => {
     e.stopPropagation();
     if (videoRef.current) {
-      if (isVideoMuted) {
-        videoRef.current.muted = false;
-        setVideoVolume(prev => prev === 0 ? 0.5 : prev);
+      const newMuted = !isVideoMuted;
+      setIsVideoMuted(newMuted);
+      videoRef.current.muted = newMuted;
+      if (newMuted) {
+        setVideoVolume(0);
       } else {
-        videoRef.current.muted = true;
+        setVideoVolume(0.5);
+        videoRef.current.volume = 0.5;
       }
-      setIsVideoMuted(!isVideoMuted);
     }
-  };
-
-  const handleVolumeChange = (value) => {
-    setVideoVolume(value);
-    if (videoRef.current) {
-      videoRef.current.muted = value === 0;
-      setIsVideoMuted(value === 0);
-    }
-  };
-
-  const getVolumeIcon = () => {
-    if (isVideoMuted || videoVolume === 0) return FiVolumeX;
-    if (videoVolume < 0.33) return FiVolume;
-    if (videoVolume < 0.66) return FiVolume1;
-    return FiVolume2;
   };
 
   const displayTimestamp = formatTimestamp(wave.createdAt);
@@ -320,14 +271,11 @@ const WaveCard = ({ wave, currentUser, compactMode = false }) => {
     }
 
     try {
-      const newLikeStatus = !localLikes.wave.isLiked;
-      setLocalLikes(prev => ({
-        ...prev,
-        wave: {
-          count: newLikeStatus ? prev.wave.count + 1 : prev.wave.count - 1,
-          isLiked: newLikeStatus
-        }
-      }));
+      const newLikeStatus = !localLikes.isLiked;
+      setLocalLikes({
+        count: newLikeStatus ? localLikes.count + 1 : localLikes.count - 1,
+        isLiked: newLikeStatus
+      });
 
       const waveRef = doc(db, 'waves', wave.id);
       await updateDoc(waveRef, {
@@ -339,15 +287,54 @@ const WaveCard = ({ wave, currentUser, compactMode = false }) => {
     } catch (error) {
       console.error('Error liking wave:', error);
       setLocalLikes(prev => ({
-        ...prev,
-        wave: {
-          count: prev.wave.count,
-          isLiked: !prev.wave.isLiked
-        }
+        count: prev.count,
+        isLiked: !prev.isLiked
       }));
       toast({
         title: 'Error',
         description: 'Could not update like status.',
+        status: 'error',
+        duration: 3000,
+        isClosable: true,
+      });
+    }
+  };
+
+  const handleSave = async () => {
+    if (!currentUser) {
+      toast({
+        title: 'Login Required',
+        description: 'Please log in to save waves.',
+        status: 'warning',
+        duration: 3000,
+        isClosable: true,
+      });
+      return;
+    }
+
+    try {
+      const newSaveStatus = !isSaved;
+      setIsSaved(newSaveStatus);
+
+      const waveRef = doc(db, 'waves', wave.id);
+      await updateDoc(waveRef, {
+        savedBy: newSaveStatus
+          ? arrayUnion(currentUser.uid)
+          : arrayRemove(currentUser.uid)
+      });
+      
+      toast({
+        title: newSaveStatus ? 'Wave saved' : 'Wave unsaved',
+        status: 'success',
+        duration: 2000,
+        isClosable: true,
+      });
+    } catch (error) {
+      console.error('Error saving wave:', error);
+      setIsSaved(!isSaved);
+      toast({
+        title: 'Error',
+        description: 'Could not update save status.',
         status: 'error',
         duration: 3000,
         isClosable: true,
@@ -379,195 +366,6 @@ const WaveCard = ({ wave, currentUser, compactMode = false }) => {
     }
   };
 
-  const handleLikeComment = async (commentId) => {
-    if (!currentUser) {
-      toast({
-        title: 'Login Required',
-        description: 'Please log in to like comments.',
-        status: 'warning',
-        duration: 3000,
-        isClosable: true,
-      });
-      return;
-    }
-  
-    try {
-      const comment = localComments.find(c => c.id === commentId);
-      if (!comment) return;
-
-      const currentLikes = comment.likes || [];
-      const isLiked = currentLikes.includes(currentUser.uid);
-
-      const updatedComments = localComments.map(c => {
-        if (c.id === commentId) {
-          return {
-            ...c,
-            likes: isLiked 
-              ? currentLikes.filter(uid => uid !== currentUser.uid)
-              : [...currentLikes, currentUser.uid]
-          };
-        }
-        return c;
-      });
-      
-      setLocalComments(updatedComments);
-
-      const waveRef = doc(db, 'waves', wave.id);
-      await updateDoc(waveRef, {
-        commentsList: updatedComments
-      });
-  
-    } catch (error) {
-      console.error('Error updating comment like:', error);
-      setLocalComments(wave.commentsList || []);
-      
-      toast({
-        title: 'Error',
-        description: 'Could not update like status.',
-        status: 'error',
-        duration: 3000,
-        isClosable: true,
-      });
-    }
-  };
-
-  const toggleReplies = (commentId) => {
-    setExpandedComments(prev => {
-      const newSet = new Set(prev);
-      if (newSet.has(commentId)) {
-        newSet.delete(commentId);
-      } else {
-        newSet.add(commentId);
-      }
-      return newSet;
-    });
-  };
-  
-  const handleReply = async (parentCommentId) => {
-    if (!currentUser || !replyText.trim()) return;
-  
-    try {
-      const newReply = {
-        id: Date.now().toString(),
-        userId: currentUser.uid,
-        username: currentUser.username || currentUser.email?.split('@')[0],
-        displayName: currentUser.displayName || currentUser.email?.split('@')[0],
-        profileImage: currentUser.profileImage || '/default-avatar.png',
-        content: replyText,
-        timestamp: new Date().toISOString(),
-        parentCommentId,
-        likes: []
-      };
-
-      const updatedComments = [...localComments, newReply];
-      setLocalComments(updatedComments);
-      setReplyText('');
-      setReplyingTo(null);
-
-      const waveRef = doc(db, 'waves', wave.id);
-      await updateDoc(waveRef, {
-        comments: increment(1),
-        commentsList: arrayUnion(newReply)
-      });
-  
-    } catch (error) {
-      console.error('Error adding reply:', error);
-      setLocalComments(wave.commentsList || []);
-      
-      toast({
-        title: 'Error',
-        description: 'Could not add reply.',
-        status: 'error',
-        duration: 3000,
-        isClosable: true,
-      });
-    }
-  };
-
-  const handleDeleteComment = async (commentId) => {
-    if (!currentUser) return;
-    
-    try {
-      const comment = localComments.find(c => c.id === commentId);
-      if (!comment || (comment.userId !== currentUser.uid && !isOwner)) return;
-
-      const updatedComments = localComments.filter(c => c.id !== commentId);
-      setLocalComments(updatedComments);
-
-      const waveRef = doc(db, 'waves', wave.id);
-      await updateDoc(waveRef, {
-        comments: increment(-1),
-        commentsList: updatedComments
-      });
-  
-      toast({
-        title: 'Comment deleted',
-        status: 'success',
-        duration: 2000,
-        isClosable: true,
-      });
-    } catch (error) {
-      console.error('Error deleting comment:', error);
-      setLocalComments(wave.commentsList || []);
-      
-      toast({
-        title: 'Error',
-        description: 'Could not delete comment.',
-        status: 'error',
-        duration: 3000,
-        isClosable: true,
-      });
-    }
-  };
-
-  const handleComment = async () => {
-    if (!currentUser) {
-      toast({
-        title: 'Login Required',
-        description: 'Please log in to comment.',
-        status: 'warning',
-        duration: 3000,
-        isClosable: true,
-      });
-      return;
-    }
-    if (!newComment.trim()) return;
-
-    try {
-      const newCommentObj = {
-        id: Date.now().toString(),
-        userId: currentUser.uid,
-        username: currentUser.username || currentUser.email?.split('@')[0],
-        displayName: currentUser.displayName || currentUser.email?.split('@')[0],
-        profileImage: currentUser.profileImage || '/default-avatar.png',
-        content: newComment,
-        timestamp: new Date().toISOString(),
-        likes: []
-      };
-
-      const updatedComments = [...localComments, newCommentObj];
-      setLocalComments(updatedComments);
-      setNewComment('');
-
-      const waveRef = doc(db, 'waves', wave.id);
-      await updateDoc(waveRef, {
-        comments: increment(1),
-        commentsList: arrayUnion(newCommentObj)
-      });
-    } catch (error) {
-      console.error('Error adding comment:', error);
-      setLocalComments(wave.commentsList || []);
-      
-      toast({
-        title: 'Error',
-        description: 'Could not add comment.',
-        status: 'error',
-        duration: 3000,
-        isClosable: true,
-      });
-    }
-  };
-
   const navigateToAuthorProfile = (e) => {
     e.stopPropagation();
     if (authorData?.username) {
@@ -582,139 +380,123 @@ const WaveCard = ({ wave, currentUser, compactMode = false }) => {
       });
     }
   };
-  
-  const navigateToCommenterProfile = (e, userId) => {
-    e.stopPropagation();
-    const userData = commentUserData[userId];
-    if (userData?.username) {
-      navigate(`/profile/${currentUser?.username}`);
-    } else {
-      toast({
-        title: 'Error',
-        description: 'Could not find user profile',
-        status: 'error',
-        duration: 3000,
-        isClosable: true,
-      });
+
+  const getLikesText = (count) => {
+    if (count >= 1000) {
+      return `${(count / 1000).toFixed(1)}k`;
     }
+    return count.toString();
   };
 
-  const mediaContainerHeight = compactMode ? '200px' : '350px';
-  const commentsMaxHeight = '200px';
+  const getCommentsText = (count) => {
+    if (!count) return '0 comments';
+    if (count >= 1000) {
+      return `${(count / 1000).toFixed(1)}k comments`;
+    }
+    return `${count} ${count === 1 ? 'comment' : 'comments'}`;
+  };
 
   return (
     <Box
       w="100%"
-      bg={isDark ? '#121212' : 'white'}
-      borderRadius="lg"
-      p={compactMode ? 3 : 4}
-      mb={4}
-      boxShadow={compactMode ? 'base' : 'md'}
-      borderWidth="1px"
-      borderColor={isDark ? 'gray.700' : 'gray.200'}
+      bg={isDark ? '#1a1a1a' : '#f8f9fa'}
+      borderRadius="xl"
       overflow="hidden"
+      position="relative"
+      mb={4}
+      boxShadow={isDark ? "0 4px 12px rgba(0,0,0,0.15)" : "0 4px 12px rgba(0,0,0,0.08)"}
+      transition="transform 0.2s"
     >
-      {/* User Info Header */}
-      <Flex align="center" mb={3} justify="space-between">
-        <Flex align="center" cursor="pointer" onClick={navigateToAuthorProfile}>
-          {loadingAuthor ? (
-            <SkeletonCircle size={compactMode ? 'sm' : 'md'} mr={3} />
-          ) : (
-            <Avatar
-              src={authorData?.profileImage || '/default-avatar.png'}
-              name={authorData?.displayName || 'User'}
-              size={compactMode ? 'sm' : 'md'}
-              mr={3}
-            />
-          )}
-          <Box>
-            {loadingAuthor ? (
-              <>
-                <Skeleton height="16px" width="120px" mb={1} />
-                <Skeleton height="12px" width="80px" />
-              </>
-            ) : (
-              <>
-                <Text fontWeight="bold" fontSize={compactMode ? 'sm' : 'md'}>
-                  {authorData?.displayName || 'User'}
-                </Text>
-                <Text fontSize="xs" color="gray.500">
-                  @{authorData?.username || 'user'} · {displayTimestamp}
-                </Text>
-              </>
+      {/* Media Content with User Info Overlay */}
+      {wave.mediaUrls && wave.mediaUrls.length > 0 && (
+        <Box position="relative" width="100%" height="650px">
+          {/* Blurred background version of the media */}
+          <Box
+            position="absolute"
+            top="0"
+            left="0"
+            right="0"
+            bottom="0"
+            overflow="hidden"
+            zIndex="0"
+          >
+            {wave.mediaType === 'image' && (
+              <Image
+                src={wave.mediaUrls[0]}
+                alt=""
+                objectFit="cover"
+                width="100%"
+                height="100%"
+                filter="blur(20px)"
+                transform="scale(1.1)"
+                opacity="0.8"
+              />
+            )}
+            {wave.mediaType === 'video' && (
+              <Box
+                position="absolute"
+                top="0"
+                left="0"
+                right="0"
+                bottom="0"
+                bgGradient={isDark ? "linear(to-b, blackAlpha.600, blackAlpha.800)" : "linear(to-b, whiteAlpha.600, whiteAlpha.800)"}
+              />
             )}
           </Box>
-        </Flex>
-
-        {isOwner && (
-          <Menu>
-            <MenuButton
-              as={IconButton}
-              icon={<FiMoreHorizontal />}
-              variant="ghost"
-              aria-label="Options"
-              size={compactMode ? 'xs' : 'sm'}
-            />
-            <MenuList bg={isDark ? '#121212' : 'white'} borderColor={isDark ? 'gray.600' : 'gray.200'}>
-              <MenuItem
-                icon={<FiTrash2 />}
-                onClick={onOpen}
-                color="red.400"
-                _hover={{ bg: isDark ? 'red.900' : 'red.50' }}
-                bg={isDark ? '#121212' : 'white'}
-              >
-                Delete Wave
-              </MenuItem>
-            </MenuList>
-          </Menu>
-        )}
-      </Flex>
-
-      {/* Title and Content */}
-      <Box px={1} mb={3}>
-        {wave.title && (
-          <Heading size={compactMode ? 'xs' : 'sm'} mb={1}>
-            {wave.title}
-          </Heading>
-        )}
-        {wave.content && (
-          <Text
-            fontSize={compactMode ? 'xs' : 'sm'}
-            noOfLines={compactMode ? 2 : 4}
-            whiteSpace="pre-wrap"
+          
+          {/* Actual media content centered */}
+          <Flex
+            position="absolute"
+            top="0"
+            left="0"
+            right="0"
+            bottom="0"
+            justifyContent="center"
+            alignItems="center"
+            zIndex="1"
+            padding="0" // Removed horizontal padding
+            onClick={wave.mediaType === 'video' ? toggleVideoPlayback : undefined}
+            cursor={wave.mediaType === 'video' ? 'pointer' : 'auto'}
           >
-            {wave.content}
-          </Text>
-        )}
-      </Box>
+            {wave.mediaType === 'image' && (
+              <Image
+                src={wave.mediaUrls[0]}
+                alt={wave.title || 'Wave image'}
+                objectFit="contain"
+                maxH="100%"
+                maxW="100%"
+                fallbackSrc="/placeholder-image.jpg"
+              />
+            )}
 
-      {/* Media Content */}
-      {wave.mediaUrls && wave.mediaUrls.length > 0 && (
-        <Box
-          width="100%"
-          height={mediaContainerHeight}
-          mb={3}
-          position="relative"
-          overflow="hidden"
-          bg={isDark ? 'gray.800' : 'gray.100'}
-          borderRadius="md"
-          onClick={wave.mediaType === 'video' ? toggleVideoPlayback : undefined}
-          cursor={wave.mediaType === 'video' ? 'pointer' : 'auto'}
-        >
-          {wave.mediaType === 'image' && (
-            <Image
-              src={wave.mediaUrls[0]}
-              alt={wave.title || 'Wave image'}
-              width="100%"
-              height="100%"
-              objectFit="contain"
-              fallbackSrc="/placeholder-image.jpg"
-            />
-          )}
+            {wave.rating && (
+                  <Flex
+                    position="absolute"
+                    bottom="3%" // Position from bottom of media
+                    left="50%"
+                    transform="translateX(-50%)"
+                    zIndex="10"
+                    bg={isDark ? "blue.900" : "blue.50"} 
+                    py={1}
+                    px={3}
+                    align="center"
+                    justify="center"
+                    borderRadius="full"
+                    boxShadow="md"
+                    borderWidth="1px"
+                    borderColor={isDark ? "blue.800" : "blue.100"}
+                    transition="all 0.2s"
+                    _groupHover={{ opacity: 0.9 }}
+                  >
+                    <HStack spacing={2}>
+                      <Icon as={FiStar} color="yellow.400" boxSize={3} />
+                      <Text fontSize="sm" fontWeight="bold">Rated: {wave.rating.toFixed(1)}/5.0</Text>
+                    </HStack>
+                  </Flex>
+                )}
 
-          {wave.mediaType === 'video' && (
-            <>
-              <AspectRatio ratio={9/16} width="100%" height="100%">
+            {wave.mediaType === 'video' && (
+              <>
                 <Box
                   as="video"
                   ref={videoRef}
@@ -724,516 +506,346 @@ const WaveCard = ({ wave, currentUser, compactMode = false }) => {
                   volume={videoVolume}
                   playsInline
                   preload="metadata"
-                  objectFit="cover"
                   width="100%"
-                  height="100%"
-                  style={{
-                    backgroundColor: isDark ? '#000' : '#f0f0f0',
-                  }}
+                  maxHeight="100%"
+                  objectFit="contain"
+                  style={{ maxWidth: "100%" }}
                 />
-              </AspectRatio>
-              
-              {/* Video controls overlay */}
-              <Box
-                position="absolute"
-                top={0}
-                left={0}
-                right={0}
-                bottom={0}
-                display="flex"
-                alignItems="center"
-                justifyContent="center"
-                pointerEvents="none"
-              >
-                {!isVideoPlaying && (
-                  <Box
-                    bg="blackAlpha.600"
+                
+                {/* Video play/pause overlay */}
+                {isVideoInView && (
+                  <IconButton
+                    aria-label={isVideoPlaying ? 'Pause video' : 'Play video'}
+                    icon={<Icon as={isVideoPlaying ? FiPause : FiPlay} boxSize={8} />}
+                    size="lg"
+                    position="absolute"
+                    top="50%"
+                    left="50%"
+                    transform="translate(-50%, -50%)"
                     borderRadius="full"
-                    p={4}
-                    pointerEvents="none"
-                  >
-                    <Icon 
-                      as={FiPlay} 
-                      boxSize={8} 
-                      color="white" 
-                    />
-                  </Box>
+                    bg="blackAlpha.600"
+                    color="white"
+                    _hover={{ bg: 'blackAlpha.700' }}
+                    opacity={isVideoPlaying ? 0 : 1}
+                    transition="opacity 0.3s"
+                    _groupHover={{ opacity: 1 }}
+                    onClick={toggleVideoPlayback}
+                  />
                 )}
-              </Box>
-              
-              {/* Volume controls */}
-              <Box
-                position="absolute"
-                bottom={4}
-                right={4}
-                display="flex"
-                flexDirection="column"
-                alignItems="flex-end"
-                gap={2}
-                onMouseLeave={() => {
-                  const timeout = setTimeout(() => {
-                    setIsVolumeHovered(false);
-                  }, 500);
-                  setVolumeTimeout(timeout);
-                }}
-                onMouseEnter={() => {
-                  if (volumeTimeout) {
-                    clearTimeout(volumeTimeout);
-                  }
-                  setIsVolumeHovered(true);
-                }}
-              >
-                <Popover
-                  isOpen={isVolumeHovered}
-                  placement="top-end"
-                  closeOnBlur={false}
-                  autoFocus={false}
-                >
-                  <PopoverTrigger>
-                    <IconButton
-                      aria-label={isVideoMuted ? 'Unmute video' : 'Mute video'}
-                      icon={<Icon as={getVolumeIcon()} />}
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        toggleMute(e);
-                      }}
-                      size="sm"
-                      borderRadius="full"
-                      bg="blackAlpha.600"
-                      color="white"
-                      _hover={{ bg: 'blackAlpha.700' }}
-                      pointerEvents="auto"
-                    />
-                  </PopoverTrigger>
-                  <PopoverContent
-                    width="24px"
-                    bg="blackAlpha.700"
-                    border="none"
-                    shadow="none"
-                    _focus={{ outline: 'none' }}
-                    pointerEvents="auto"
-                    onClick={(e) => e.stopPropagation()}
-                    borderRadius="md"
+                
+                {/* Loading indicator */}
+                {!hasVideoPlayed && isVideoInView && (
+                  <Flex
+                    position="absolute"
+                    top={0}
+                    left={0}
+                    right={0}
+                    bottom={0}
+                    alignItems="center"
+                    justifyContent="center"
+                    bg="blackAlpha.300"
                   >
-                    <PopoverBody p={1}>
-                      <Slider
-                        aria-label="Volume slider"
-                        orientation="vertical"
-                        minH="80px"
-                        min={0}
-                        max={1}
-                        step={0.1}
-                        value={isVideoMuted ? 0 : videoVolume}
-                        onChange={handleVolumeChange}
-                        onMouseDown={(e) => e.stopPropagation()}
-                        onClick={(e) => e.stopPropagation()}
-                      >
-                        <SliderTrack 
-                          bg="whiteAlpha.200" 
-                          width="2px"
-                        >
-                          <SliderFilledTrack 
-                            bg="white" 
-                          />
-                        </SliderTrack>
-                        <SliderThumb 
-                          boxSize={2.5}
-                          bg="white"
-                          _focus={{ boxShadow: 'none' }}
-                          _hover={{ boxSize: 3 }}
-                          transition="all 0.2s"
-                        />
-                      </Slider>
-                    </PopoverBody>
-                  </PopoverContent>
-                </Popover>
-              </Box>
-              
-              {/* Loading indicator */}
-              {!hasVideoPlayed && isVideoInView && (
-                <Flex
-                  position="absolute"
-                  top={0}
-                  left={0}
-                  right={0}
-                  bottom={0}
-                  alignItems="center"
-                  justifyContent="center"
-                  bg="blackAlpha.300"
+                    <Spinner color="white" size="md" />
+                  </Flex>
+                )}
+              </>
+            )}
+          </Flex>
+          
+          {/* Header with author info overlay */}
+          <Flex 
+            position="absolute" 
+            top="0"
+            left="0"
+            right="0"
+            zIndex="10"
+            justify="space-between" 
+            align="center" 
+            p={3}
+            bgGradient={isDark 
+              ? "linear(to-b, blackAlpha.800, blackAlpha.600, transparent)" 
+              : "linear(to-b, rgba(255,255,255,0.4), rgba(255,255,255,0.2), transparent)"}
+          >
+            <Flex align="center" flex="1" overflow="hidden">
+              <Avatar 
+                size="sm"
+                src={authorData?.profileImage} 
+                name={authorData?.displayName} 
+                onClick={navigateToAuthorProfile}
+                cursor="pointer"
+                mr={2}
+                borderWidth={2}
+                borderColor={isDark ? "blue.500" : "blue.400"}
+              />
+              <Box flex="1" minW="0">
+                <Text 
+                  fontWeight="bold" 
+                  fontSize="sm" 
+                  onClick={navigateToAuthorProfile} 
+                  cursor="pointer"
+                  isTruncated
+                  color={isDark ? "white" : "gray.800"}
                 >
-                  <Spinner color="white" size="lg" />
-                </Flex>
+                  {authorData?.displayName || authorData?.username || 'User'}
+                </Text>
+                <HStack spacing={1}>
+                  <Text color={isDark ? "gray.300" : "gray.600"} fontSize="xs" isTruncated>
+                    @{authorData?.username || 'user'}
+                  </Text>
+                  <Text color={isDark ? "gray.300" : "gray.600"} fontSize="xs">
+                    • {displayTimestamp}
+                  </Text>
+                </HStack>
+              </Box>
+            </Flex>
+            
+            <HStack>
+              {wave.location && (
+                <Tooltip label={wave.location} placement="top">
+                  <Icon 
+                    as={FiMapPin} 
+                    color={isDark ? "blue.300" : "blue.500"} 
+                    boxSize={4} 
+                  />
+                </Tooltip>
               )}
-            </>
+              {isOwner && ( 
+                <IconButton
+                  aria-label="More options"
+                  icon={<FiMoreHorizontal />}
+                  variant="ghost"
+                  size="sm"
+                  color={isDark ? "white" : "gray.700"}
+                  onClick={onOpen}
+                />
+              )}
+            </HStack>
+          </Flex>
+          
+          {/* Video progress bar */}
+          {wave.mediaType === 'video' && (
+            <Progress 
+              value={videoProgress} 
+              size="xs" 
+              colorScheme="blue" 
+              width="100%" 
+              position="absolute"
+              bottom="0"
+              left="0"
+              right="0"
+              zIndex="5"
+            />
           )}
-
-          {wave.mediaType === 'audio' && (
-            <Flex width="100%" height="100%" align="center" justify="center" p={4}>
-              <audio controls src={wave.mediaUrls[0]} style={{ width: '100%' }} />
+          
+          {/* Volume control for video */}
+          {wave.mediaType === 'video' && (
+            <Flex
+              position="absolute"
+              bottom="2"
+              left="2"
+              align="center"
+              bg="blackAlpha.600"
+              borderRadius="full"
+              padding="1"
+              zIndex="5"
+            >
+              <IconButton
+                aria-label={isVideoMuted ? 'Unmute video' : 'Mute video'}
+                icon={<Icon as={isVideoMuted ? FiVolumeX : FiVolume2} />}
+                onClick={toggleMute}
+                size="sm"
+                borderRadius="full"
+                variant="ghost"
+                color="white"
+              />
+              
+              {!isVideoMuted && (
+                <Slider
+                  aria-label="Volume"
+                  value={videoVolume * 100}
+                  min={0}
+                  max={100}
+                  width="60px"
+                  ml={1}
+                  onChange={(val) => setVideoVolume(val / 100)}
+                  colorScheme="blue"
+                >
+                  <SliderTrack bg="whiteAlpha.300">
+                    <SliderFilledTrack />
+                  </SliderTrack>
+                  <SliderThumb boxSize={2} />
+                </Slider>
+              )}
             </Flex>
           )}
         </Box>
       )}
 
-      {/* Category and Rating */}
-      <HStack justify="space-between" align="center" mb={3} px={1}>
-        {wave.category && (
-          <Tag colorScheme="blue" size="sm">
-            {wave.category}
-          </Tag>
+      {/* Content Section - Compact info section */}
+      <Box p={3}>
+        {/* Compact wave content */}
+        {wave.title && (
+          <Text fontWeight="bold" fontSize="md" mb={1} isTruncated>
+            {wave.title}
+          </Text>
         )}
-        {typeof wave.rating === 'number' && (
-          <HStack spacing={1}>
-            <Icon as={FiStar} color="yellow.400" />
-            <Text fontSize="sm" fontWeight="bold">
-              {wave.rating.toFixed(1)}
-            </Text>
+        
+        {wave.content && (
+          <Text fontSize="sm" mb={2} noOfLines={2}>
+            {wave.content}
+          </Text>
+        )}
+        
+        {/* Compact action buttons */}
+        <Flex justify="space-between" align="center" pt={1}>
+          <HStack spacing={3}>
+            <IconButton
+              aria-label="Like"
+              icon={<FiHeart 
+                fill={localLikes.isLiked ? (isDark ? "#F45B69" : "#E53E3E") : "transparent"} 
+                size={18}
+              />}
+              variant="ghost"
+              size="sm"
+              color={localLikes.isLiked ? (isDark ? "#F45B69" : "#E53E3E") : (isDark ? "white" : "black")}
+              onClick={(e) => {
+                e.stopPropagation();
+                handleLike();
+              }}
+              bg={isDark ? "whiteAlpha.100" : "blackAlpha.50"}
+              _hover={{
+                bg: isDark ? "whiteAlpha.200" : "blackAlpha.100"
+              }}
+              borderRadius="full"
+            />
+            
+            <IconButton
+              aria-label="Comment"
+              icon={<FiMessageSquare size={18} />}
+              variant="ghost"
+              size="sm"
+              color={isDark ? "white" : "black"}
+              onClick={(e) => {
+                e.stopPropagation();
+                if (onCommentsClick) {
+                  onCommentsClick(wave.id);
+                }
+              }}
+              bg={isDark ? "whiteAlpha.100" : "blackAlpha.50"}
+              _hover={{
+                bg: isDark ? "whiteAlpha.200" : "blackAlpha.100"
+              }}
+              borderRadius="full"
+            />
+            
+            <IconButton
+              aria-label="Share"
+              icon={<FiShare2 size={18} />}
+              variant="ghost"
+              size="sm"
+              color={isDark ? "white" : "black"}
+              onClick={() => toast({
+                title: "Share options",
+                status: "info",
+                duration: 2000,
+              })}
+              bg={isDark ? "whiteAlpha.100" : "blackAlpha.50"}
+              _hover={{
+                bg: isDark ? "whiteAlpha.200" : "blackAlpha.100"
+              }}
+              borderRadius="full"
+            />
           </HStack>
-        )}
-      </HStack>
-
-      {/* Interaction Buttons */}
-      <Flex
-        justify="space-between"
-        align="center"
-        px={1}
-        py={2}
-        borderTopWidth="1px"
-        borderColor={isDark ? 'gray.700' : 'gray.200'}
-      >
-        <HStack spacing={compactMode ? 1 : 2}>
-          <Button
-            leftIcon={<FiHeart fill={localLikes.wave.isLiked ? 'currentColor' : 'none'} />}
-            onClick={handleLike}
+          
+          <IconButton
+            aria-label={isSaved ? "Unsave" : "Save"}
+            icon={<FiBookmark 
+              fill={isSaved ? (isDark ? "#63B3ED" : "#3182CE") : "transparent"} 
+              size={18}
+            />}
             variant="ghost"
             size="sm"
-            colorScheme={localLikes.wave.isLiked ? 'red' : 'gray'}
-          >
-            {localLikes.wave.count}
-          </Button>
-
-          <Button
-            leftIcon={<FiMessageSquare />}
-            onClick={() => setShowComments(!showComments)}
-            variant="ghost"
-            size="sm"
-            colorScheme={showComments ? 'blue' : 'gray'}
-          >
-            {wave.comments || 0}
-          </Button>
-        </HStack>
-
-        {typeof wave.views === 'number' && !compactMode && (
-          <HStack spacing={1} color="gray.500">
-            <Icon as={FiEye} boxSize={4} />
-            <Text fontSize="sm">{wave.views}</Text>
-          </HStack>
-        )}
-      </Flex>
-
-      {/* Comments Section */}
-      <Collapse in={showComments}>
-        <VStack spacing={3} align="stretch" mt={3} px={1} pb={2}>
-          {currentUser ? (
-            <Flex>
-              <Input
-                placeholder="Add a comment..."
-                value={newComment}
-                onChange={(e) => setNewComment(e.target.value)}
-                size="sm"
-                mr={2}
-                bg={isDark ? 'gray.700' : 'white'}
-                onKeyPress={(e) => {
-                  if (e.key === 'Enter') handleComment();
-                }}
-              />
-              <IconButton
-                icon={<FiSend />}
-                aria-label="Send Comment"
-                onClick={handleComment}
-                isDisabled={!newComment.trim()}
-                colorScheme="blue"
-                size="sm"
-              />
-            </Flex>
-          ) : (
-            <Text fontSize="sm" color="gray.500" textAlign="center" py={2}>
-              Please sign in to comment
-            </Text>
-          )}
-
-          {/* Scrollable Comments Container */}
-          <Box 
-            maxHeight={commentsMaxHeight}
-            overflowY="auto"
-            css={{
-              '&::-webkit-scrollbar': {
-                width: '6px',
-              },
-              '&::-webkit-scrollbar-track': {
-                width: '8px',
-                background: 'transparent',
-              },
-              '&::-webkit-scrollbar-thumb': {
-                background: isDark ? 'rgba(255, 255, 255, 0.1)' : 'rgba(0, 0, 0, 0.1)',
-                borderRadius: '24px',
-              },
+            color={isSaved ? (isDark ? "#63B3ED" : "#3182CE") : (isDark ? "white" : "black")}
+            onClick={(e) => {
+              e.stopPropagation();
+              handleSave();
             }}
+            bg={isDark ? "whiteAlpha.100" : "blackAlpha.50"}
+            _hover={{
+              bg: isDark ? "whiteAlpha.200" : "blackAlpha.100"
+            }}
+            borderRadius="full"
+          />
+        </Flex>
+        
+        {/* Compact stats */}
+        <Flex justify="space-between" align="center" mt={1}>
+          <HStack spacing={2} color={isDark ? "gray.400" : "gray.500"} fontSize="xs">
+            <Text>{getLikesText(localLikes.count)} likes</Text>
+            <Text>•</Text>
+            <Text>{getCommentsText(wave.commentsList?.length)}</Text>
+          </HStack>
+          {wave.category && (
+            <Badge colorScheme="blue" variant="subtle" rounded="full" fontSize="xs" px={2}>
+              {wave.category}
+            </Badge>
+          )}
+        </Flex>
+      </Box>
+
+      {/* Delete Modal */}
+      {isOpen && (
+        <Box
+          position="fixed"
+          top="0"
+          left="0"
+          right="0"
+          bottom="0"
+          bg="blackAlpha.600"
+          zIndex="modal"
+          onClick={onClose}
+          display="flex"
+          alignItems="center"
+          justifyContent="center"
+        >
+          <Box
+            bg={isDark ? "#1a1a1a" : "white"}
+            borderRadius="xl"
+            overflow="hidden"
+            width="300px"
+            onClick={(e) => e.stopPropagation()}
+            boxShadow="lg"
           >
-            {loadingCommentUsers && (
-              <Box py={2}>
-                <Skeleton height="24px" mb={2} />
-                <Skeleton height="24px" mb={2} />
-                <Skeleton height="24px" />
-              </Box>
-            )}
-
-            {!loadingCommentUsers && localComments && localComments.length > 0 ? (
-              [...localComments]
-                .filter(comment => !comment.parentCommentId)
-                .sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp))
-                .map((comment) => {
-                  const userData = commentUserData[comment.userId] || {};
-                  const displayName = userData.displayName || comment.displayName || 'User';
-                  const profileImage = userData.profileImage || comment.profileImage || '/default-avatar.png';
-                  const username = userData.username || comment.username || 'user';
-                  const isCommentOwner = currentUser?.uid === comment.userId;
-                  const isCommentLiked = comment.likes?.includes(currentUser?.uid);
-                  const replies = localComments.filter(c => c.parentCommentId === comment.id);
-                  const isExpanded = expandedComments.has(comment.id);
-
-                  return (
-                    <VStack key={comment.id} align="stretch" spacing={2}>
-                      <Flex 
-                        align="start"
-                        p={2}
-                        _hover={{
-                          bg: isDark ? 'whiteAlpha.50' : 'gray.50',
-                          borderRadius: 'md'
-                        }}
-                      >
-                        <Avatar 
-                          size="xs" 
-                          src={profileImage} 
-                          mr={2} 
-                          cursor="pointer" 
-                          onClick={(e) => navigateToCommenterProfile(e, comment.userId)}
-                        />
-                        <Box flex={1}>
-                          {/* Comment Header */}
-                          <Flex alignItems="center" justifyContent="space-between">
-                            <Flex alignItems="center" flex={1}>
-                              <Text 
-                                fontWeight="bold" 
-                                fontSize="xs" 
-                                cursor="pointer" 
-                                onClick={(e) => navigateToCommenterProfile(e, comment.userId)}
-                              >
-                                {displayName}
-                              </Text>
-                              <Text fontSize="xs" color="gray.500" ml={1}>
-                                @{username}
-                              </Text>
-                              <Text fontSize="xs" color="gray.500" ml={2}>
-                                {formatTimestamp(comment.timestamp)}
-                              </Text>
-                            </Flex>
-                            {(isCommentOwner || isOwner) && (
-                              <IconButton
-                                icon={<FiTrash />}
-                                aria-label="Delete comment"
-                                size="xs"
-                                variant="ghost"
-                                colorScheme="red"
-                                onClick={() => handleDeleteComment(comment.id)}
-                              />
-                            )}
-                          </Flex>
-
-                          {/* Comment Content */}
-                          <Text fontSize="xs" whiteSpace="pre-wrap" mt={1}>
-                            {comment.content}
-                          </Text>
-
-                          {/* Comment Actions */}
-                          <HStack mt={2} spacing={4}>
-                            <Button
-                              leftIcon={<FiHeart fill={isCommentLiked ? 'currentColor' : 'none'} />}
-                              onClick={() => handleLikeComment(comment.id)}
-                              variant="ghost"
-                              size="xs"
-                              colorScheme={isCommentLiked ? 'red' : 'gray'}
-                            >
-                              {comment.likes?.length || 0}
-                            </Button>
-                            <Button
-                              leftIcon={<FiMessageSquare />}
-                              onClick={() => setReplyingTo(replyingTo === comment.id ? null : comment.id)}
-                              variant="ghost"
-                              size="xs"
-                              colorScheme={replyingTo === comment.id ? 'blue' : 'gray'}
-                            >
-                              Reply
-                            </Button>
-                            {replies.length > 0 && (
-                              <Button
-                                size="xs"
-                                variant="ghost"
-                                onClick={() => toggleReplies(comment.id)}
-                                rightIcon={
-                                  <Icon 
-                                    as={isExpanded ? FiChevronUp : FiChevronDown} 
-                                    transition="transform 0.2s"
-                                  />
-                                }
-                              >
-                                {replies.length} {replies.length === 1 ? 'reply' : 'replies'}
-                              </Button>
-                            )}
-                          </HStack>
-
-                          {/* Reply Input */}
-                          {replyingTo === comment.id && (
-                            <Flex mt={2}>
-                              <Input
-                                placeholder="Write a reply..."
-                                value={replyText}
-                                onChange={(e) => setReplyText(e.target.value)}
-                                size="xs"
-                                mr={2}
-                                bg={isDark ? 'gray.700' : 'white'}
-                                onKeyPress={(e) => {
-                                  if (e.key === 'Enter') handleReply(comment.id);
-                                }}
-                              />
-                              <IconButton
-                                icon={<FiSend />}
-                                aria-label="Send Reply"
-                                onClick={() => handleReply(comment.id)}
-                                isDisabled={!replyText.trim()}
-                                colorScheme="blue"
-                                size="xs"
-                              />
-                            </Flex>
-                          )}
-
-                          {/* Replies Collapse */}
-                          <Collapse in={isExpanded}>
-                            <VStack mt={2} pl={4} spacing={2} align="stretch">
-                              {replies
-                                .sort((a, b) => new Date(a.timestamp) - new Date(b.timestamp))
-                                .map(reply => {
-                                  const replyUserData = commentUserData[reply.userId] || {};
-                                  const replyDisplayName = replyUserData.displayName || reply.displayName || 'User';
-                                  const replyProfileImage = replyUserData.profileImage || reply.profileImage || '/default-avatar.png';
-                                  const replyUsername = replyUserData.username || reply.username || 'user';
-                                  const isReplyOwner = currentUser?.uid === reply.userId;
-                                  const isReplyLiked = reply.likes?.includes(currentUser?.uid);
-
-                                  return (
-                                    <Flex 
-                                      key={reply.id}
-                                      align="start"
-                                      p={2}
-                                      borderLeftWidth="2px"
-                                      borderLeftColor={isDark ? 'whiteAlpha.200' : 'gray.200'}
-                                      _hover={{
-                                        bg: isDark ? 'whiteAlpha.50' : 'gray.50',
-                                        borderRadius: 'md'
-                                      }}
-                                    >
-                                    <Avatar 
-                                      size="xs" 
-                                      src={profileImage} 
-                                      mr={2} 
-                                      cursor="pointer" 
-                                      onClick={(e) => navigateToCommenterProfile(e, comment.userId)}
-                                    />
-                                      <Box flex={1}>
-                                        <Flex alignItems="center" justifyContent="space-between">
-                                          <Flex alignItems="center" flex={1}>
-                                          <Text 
-                                            fontWeight="bold" 
-                                            fontSize="xs" 
-                                            cursor="pointer" 
-                                            onClick={(e) => navigateToCommenterProfile(e, comment.userId)}
-                                          >
-                                            {displayName}
-                                          </Text>
-                                            <Text fontSize="xs" color="gray.500" ml={1}>
-                                              @{replyUsername}
-                                            </Text>
-                                            <Text fontSize="xs" color="gray.500" ml={2}>
-                                              {formatTimestamp(reply.timestamp)}
-                                            </Text>
-                                          </Flex>
-                                          {(isReplyOwner || isOwner) && (
-                                            <IconButton
-                                              icon={<FiTrash />}
-                                              aria-label="Delete reply"
-                                              size="xs"
-                                              variant="ghost"
-                                              colorScheme="red"
-                                              onClick={() => handleDeleteComment(reply.id)}
-                                            />
-                                          )}
-                                        </Flex>
-                                        <Text fontSize="xs" whiteSpace="pre-wrap" mt={1}>
-                                          {reply.content}
-                                        </Text>
-                                        <Button
-                                          leftIcon={<FiHeart fill={isReplyLiked ? 'currentColor' : 'none'} />}
-                                          onClick={() => handleLikeComment(reply.id)}
-                                          variant="ghost"
-                                          size="xs"
-                                          mt={2}
-                                          colorScheme={isReplyLiked ? 'red' : 'gray'}
-                                        >
-                                          {reply.likes?.length || 0}
-                                        </Button>
-                                      </Box>
-                                    </Flex>
-                                  );
-                                })}
-                            </VStack>
-                          </Collapse>
-                        </Box>
-                      </Flex>
-                    </VStack>
-                  );
-                })
-            ) : (
-              !loadingCommentUsers && (
-                <Text fontSize="xs" color="gray.500" textAlign="center" py={2}>
-                  No comments yet.
-                </Text>
-              )
-            )}
-          </Box>
-        </VStack>
-      </Collapse>
-
-      {/* Delete Confirmation Dialog */}
-      <AlertDialog isOpen={isOpen} leastDestructiveRef={cancelRef} onClose={onClose} isCentered>
-        <AlertDialogOverlay>
-          <AlertDialogContent bg={isDark ? '#121212' : 'white'}>
-            <AlertDialogHeader fontSize="lg" fontWeight="bold">
-              Delete Wave
-            </AlertDialogHeader>
-            <AlertDialogBody>
-              Are you sure you want to delete this wave? This action cannot be undone.
-            </AlertDialogBody>
-            <AlertDialogFooter>
-              <Button ref={cancelRef} onClick={onClose} variant="ghost">
+            <VStack spacing={0} divider={<Box borderBottomWidth="1px" borderColor={isDark ? "gray.700" : "gray.200"} />}>
+              <Text fontWeight="bold" p={4}>Wave Options</Text>
+              <Button
+                width="100%"
+                py={6}
+                variant="ghost"
+                borderRadius="0"
+                color="red.500"
+                fontWeight="bold"
+                leftIcon={<FiTrash2 />}
+                onClick={handleDelete}
+                justifyContent="flex-start"
+                pl={6}
+              >
+                Delete Wave
+              </Button>
+              <Button
+                width="100%"
+                py={6}
+                variant="ghost"
+                borderRadius="0"
+                onClick={onClose}
+                justifyContent="center"
+              >
                 Cancel
               </Button>
-              <Button colorScheme="red" onClick={handleDelete} ml={3}>
-                Delete
-              </Button>
-            </AlertDialogFooter>
-          </AlertDialogContent>
-        </AlertDialogOverlay>
-      </AlertDialog>
+            </VStack>
+          </Box>
+        </Box>
+      )}
     </Box>
   );
 };
