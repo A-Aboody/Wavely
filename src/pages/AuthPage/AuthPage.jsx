@@ -160,7 +160,6 @@ const AuthPage = () => {
         position="relative"
         overflow="hidden"
       >
-        {/* Text Content - positioned with margin-bottom for gap */}
         <Box 
           w="100%"
           h={TEXT_SECTION_HEIGHT}
@@ -203,7 +202,6 @@ const AuthPage = () => {
           </motion.div>
         </Box>
 
-        {/* Wave Container - positioned with initial offset */}
         <Box
           ref={waveContainerRef}
           position="absolute"
@@ -211,7 +209,7 @@ const AuthPage = () => {
           width="100%"
           height={WAVE_HEIGHT}
           zIndex="1"
-          bottom={WAVE_INITIAL_OFFSET} // Initial position (negative = partially hidden)
+          bottom={WAVE_INITIAL_OFFSET}
           transition="transform 0.5s cubic-bezier(0.33, 1, 0.68, 1)"
           overflow="hidden"
         >

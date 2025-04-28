@@ -246,24 +246,19 @@ const CommentItem = ({
         timestamp: new Date().toISOString(),
         likes: [],
         parentCommentId: comment.id,
-        isReply: true // Add this flag to identify replies
+        isReply: true
       };
       
-      // Update the comment with the new reply
       const updatedComment = {
         ...commentsList[parentCommentIndex],
         replies: [...(commentsList[parentCommentIndex].replies || []), newReply]
       };
       
-      // Replace the comment in the list
       const updatedCommentsList = [...commentsList];
       updatedCommentsList[parentCommentIndex] = updatedComment;
-      
-      // Update the database with new reply but don't increment total comment count
-      // The total count will be calculated from commentsList structure
+
       await updateDoc(waveRef, {
         commentsList: updatedCommentsList,
-        // Remove any explicit comments count update
       });
       
       // Update local state

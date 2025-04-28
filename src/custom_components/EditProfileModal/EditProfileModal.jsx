@@ -101,7 +101,7 @@ import {
     };
   
     const handleSubmit = async (event) => {
-        event.preventDefault(); // Now this will work correctly
+        event.preventDefault();
         
         try {
           // Validate required fields

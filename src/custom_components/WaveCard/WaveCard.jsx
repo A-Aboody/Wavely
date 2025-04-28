@@ -1,4 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
+import { motion } from 'framer-motion';
 import {
   Box,
   Flex,
@@ -29,6 +30,17 @@ import {
   DrawerCloseButton,
   Tooltip,
   Center,
+  Modal,
+  ModalOverlay,
+  ModalContent,
+  ModalHeader,
+  ModalFooter,
+  ModalBody,
+  ModalCloseButton,
+  RadioGroup,
+  Radio,
+  Stack,
+  Divider
 } from '@chakra-ui/react';
 import { 
   FiHeart, 
@@ -44,7 +56,11 @@ import {
   FiBookmark,
   FiBell,
   FiZap,
-  FiMapPin
+  FiMapPin,
+  FiUser,
+  FiUsers,
+  FiX,
+  FiCheck
 } from 'react-icons/fi';
 import { doc, getDoc, deleteDoc, updateDoc, arrayUnion, increment, arrayRemove, onSnapshot } from 'firebase/firestore';
 import { db } from '../../Firebase/firebase';
@@ -62,6 +78,12 @@ const WaveCard = ({ wave, currentUser, onCommentsClick = false }) => {
     isLiked: wave.likedBy?.includes(currentUser?.uid) || false
   });
   const [isSaved, setIsSaved] = useState(wave.savedBy?.includes(currentUser?.uid) || false);
+  const [userRating, setUserRating] = useState(null);
+  const [showRatingModal, setShowRatingModal] = useState(false);
+  const [tempRating, setTempRating] = useState(0);
+  const [isExpanded, setIsExpanded] = useState(false);
+  const [contentHeight, setContentHeight] = useState(0);
+  const fullContentRef = useRef(null);
 
   // Video player state
   const videoRef = useRef(null);
@@ -91,13 +113,18 @@ const WaveCard = ({ wave, currentUser, onCommentsClick = false }) => {
         });
         
         setIsSaved(data.savedBy?.includes(currentUser?.uid) || false);
+
+        // Find the user's rating if it exists
+        if (currentUser?.uid && data.communityRatings) {
+          const userRatingObj = data.communityRatings.find(r => r.userId === currentUser.uid);
+          setUserRating(userRatingObj ? userRatingObj.rating : null);
+        }
       }
     });
   
     return () => unsubscribe();
   }, [wave.id, currentUser?.uid]);
 
-  // Intersection Observer for video autoplay
   useEffect(() => {
     if (!videoRef.current || wave.mediaType !== 'video') return;
   
@@ -396,6 +423,270 @@ const WaveCard = ({ wave, currentUser, onCommentsClick = false }) => {
     return `${count} ${count === 1 ? 'comment' : 'comments'}`;
   };
 
+  const handleRateClick = () => {
+    if (!currentUser) {
+      toast({
+        title: 'Login Required',
+        description: 'Please log in to rate waves.',
+        status: 'warning',
+        duration: 3000,
+        isClosable: true,
+      });
+      return;
+    }
+
+    if (isOwner) {
+      toast({
+        title: 'Cannot Rate',
+        description: 'You cannot rate your own community wave.',
+        status: 'info',
+        duration: 3000,
+        isClosable: true,
+      });
+      return;
+    }
+
+    setTempRating(userRating || 0);
+    setShowRatingModal(true);
+  };
+
+  const submitRating = async () => {
+    try {
+      const waveRef = doc(db, 'waves', wave.id);
+      
+      // Remove existing rating if it exists
+      const updatedRatings = waveData.communityRatings
+        ? waveData.communityRatings.filter(r => r.userId !== currentUser.uid)
+        : [];
+      
+      // Add new rating
+      updatedRatings.push({
+        userId: currentUser.uid,
+        rating: tempRating
+      });
+      
+      // Calculate new average
+      const averageRating = updatedRatings.reduce((sum, r) => sum + r.rating, 0) / updatedRatings.length;
+      
+      await updateDoc(waveRef, {
+        communityRatings: updatedRatings,
+        averageRating: parseFloat(averageRating.toFixed(1))
+      });
+      
+      setUserRating(tempRating);
+      setShowRatingModal(false);
+      
+      toast({
+        title: 'Rating submitted',
+        status: 'success',
+        duration: 2000,
+        isClosable: true,
+      });
+    } catch (error) {
+      console.error('Error submitting rating:', error);
+      toast({
+        title: 'Error',
+        description: 'Could not submit rating.',
+        status: 'error',
+        duration: 3000,
+        isClosable: true,
+      });
+    }
+  };
+
+  const renderRatingStars = (rating, max = 5, size = 4) => {
+    const stars = [];
+    const fullStars = Math.floor(rating);
+    const hasHalfStar = rating % 1 >= 0.5;
+    
+    for (let i = 1; i <= max; i++) {
+      if (i <= fullStars) {
+        stars.push(<Icon key={i} as={FiStar} color="yellow.400" boxSize={size} fill="yellow.400" />);
+      } else if (i === fullStars + 1 && hasHalfStar) {
+        stars.push(<Icon key={i} as={FiStar} color="yellow.400" boxSize={size} fill="url(#half-star)" />);
+      } else {
+        stars.push(<Icon key={i} as={FiStar} color="yellow.400" boxSize={size} />);
+      }
+    }
+    
+    return (
+      <HStack spacing={0.5}>
+        {stars}
+        <svg width="0" height="0">
+          <defs>
+            <linearGradient id="half-star" x1="0" x2="100%" y1="0" y2="0">
+              <stop offset="50%" stopColor="yellow" />
+              <stop offset="50%" stopColor="transparent" />
+            </linearGradient>
+          </defs>
+        </svg>
+      </HStack>
+    );
+  };
+
+  const renderRatingControl = () => {
+    if (wave.communityRatingScale === 5) {
+      return (
+        <Box>
+          <Text mb={2} fontSize="sm" color={isDark ? "gray.300" : "gray.600"}>
+            Rate this content (1-5 stars):
+          </Text>
+          <HStack spacing={1} justify="center">
+            {[1, 2, 3, 4, 5].map((star) => (
+              <IconButton
+                key={star}
+                aria-label={`Rate ${star} stars`}
+                icon={<FiStar />}
+                color={tempRating >= star ? "yellow.400" : "gray.300"}
+                fill={tempRating >= star ? "yellow.400" : "transparent"}
+                variant="ghost"
+                size="sm"
+                onClick={() => setTempRating(star)}
+                _hover={{ transform: 'scale(1.2)' }}
+                transition="transform 0.2s"
+              />
+            ))}
+          </HStack>
+          <Text mt={1} textAlign="center" fontSize="sm">
+            {tempRating} / 5 stars
+          </Text>
+        </Box>
+      );
+    } else {
+      return (
+        <Box>
+          <Text mb={2} fontSize="sm" color={isDark ? "gray.300" : "gray.600"}>
+            Rate this content (1-10 points):
+          </Text>
+          <Slider
+            aria-label="Rating slider"
+            min={1}
+            max={10}
+            step={0.5}
+            value={tempRating}
+            onChange={setTempRating}
+            colorScheme="yellow"
+          >
+            <SliderTrack>
+              <SliderFilledTrack />
+            </SliderTrack>
+            <SliderThumb boxSize={4}>
+              <Box color="yellow.400" as={FiStar} />
+            </SliderThumb>
+          </Slider>
+          <Text mt={1} textAlign="center" fontSize="sm">
+            {tempRating} / 10 points
+          </Text>
+        </Box>
+      );
+    }
+  };
+
+  const renderWaveRating = () => {
+    if (wave.waveType === 'personal' && wave.rating !== null) {
+      // Determine if it's a 5-point or 10-point scale
+      const isNumberRating = wave.rating > 5;
+      const maxScale = isNumberRating ? 10 : 5;
+      
+      return (
+        <Flex
+          position="absolute"
+          bottom="3%"
+          left="50%"
+          transform="translateX(-50%)"
+          zIndex="10"
+          bg={isDark ? "blue.900" : "blue.50"} 
+          py={1}
+          px={3}
+          align="center"
+          justify="center"
+          borderRadius="full"
+          boxShadow="md"
+          borderWidth="1px"
+          borderColor={isDark ? "blue.800" : "blue.100"}
+        >
+          <HStack spacing={1}>
+            <Icon as={FiUser} color={isDark ? "blue.300" : "blue.500"} boxSize={3} />
+            <Text fontSize="sm" fontWeight="bold">
+              Author Rating: {wave.rating.toFixed(1)}/{maxScale}
+            </Text>
+          </HStack>
+        </Flex>
+      );
+    } else if (wave.waveType === 'community' && wave.averageRating !== null) {
+      return (
+        <Flex
+          position="absolute"
+          bottom="3%"
+          left="50%"
+          transform="translateX(-50%)"
+          zIndex="10"
+          bg={isDark ? "purple.900" : "purple.50"} 
+          py={1}
+          px={3}
+          align="center"
+          justify="center"
+          borderRadius="full"
+          boxShadow="md"
+          borderWidth="1px"
+          borderColor={isDark ? "purple.800" : "purple.100"}
+        >
+          <HStack spacing={1}>
+            <Icon as={FiUsers} color={isDark ? "purple.300" : "purple.500"} boxSize={3} />
+            <Text fontSize="sm" fontWeight="bold">
+              Community Rating: {wave.averageRating.toFixed(1)}/{wave.communityRatingScale}
+            </Text>
+          </HStack>
+        </Flex>
+      );
+    }
+    return null;
+  };
+
+  const handleRemoveRating = async () => {
+    try {
+      const waveRef = doc(db, 'waves', wave.id);
+      
+      // Filter out user's rating
+      const updatedRatings = waveData.communityRatings.filter(r => r.userId !== currentUser.uid);
+      
+      // Calculate new average if there are remaining ratings
+      const averageRating = updatedRatings.length > 0
+        ? updatedRatings.reduce((sum, r) => sum + r.rating, 0) / updatedRatings.length
+        : null;
+      
+      await updateDoc(waveRef, {
+        communityRatings: updatedRatings,
+        averageRating: averageRating ? parseFloat(averageRating.toFixed(1)) : null
+      });
+      
+      setUserRating(null);
+      setShowRatingModal(false);
+      
+      toast({
+        title: 'Rating removed',
+        status: 'success',
+        duration: 2000,
+        isClosable: true,
+      });
+    } catch (error) {
+      console.error('Error removing rating:', error);
+      toast({
+        title: 'Error',
+        description: 'Could not remove rating.',
+        status: 'error',
+        duration: 3000,
+        isClosable: true,
+      });
+    }
+  };
+
+  useEffect(() => {
+    if (isExpanded && fullContentRef.current) {
+      setContentHeight(fullContentRef.current.scrollHeight);
+    }
+  }, [isExpanded]);
+
   return (
     <Box
       w="100%"
@@ -410,7 +701,6 @@ const WaveCard = ({ wave, currentUser, onCommentsClick = false }) => {
       {/* Media Content with User Info Overlay */}
       {wave.mediaUrls && wave.mediaUrls.length > 0 && (
         <Box position="relative" width="100%" height="650px">
-          {/* Blurred background version of the media */}
           <Box
             position="absolute"
             top="0"
@@ -444,7 +734,6 @@ const WaveCard = ({ wave, currentUser, onCommentsClick = false }) => {
             )}
           </Box>
           
-          {/* Actual media content centered */}
           <Flex
             position="absolute"
             top="0"
@@ -454,7 +743,7 @@ const WaveCard = ({ wave, currentUser, onCommentsClick = false }) => {
             justifyContent="center"
             alignItems="center"
             zIndex="1"
-            padding="0" // Removed horizontal padding
+            padding="0"
             onClick={wave.mediaType === 'video' ? toggleVideoPlayback : undefined}
             cursor={wave.mediaType === 'video' ? 'pointer' : 'auto'}
           >
@@ -469,31 +758,7 @@ const WaveCard = ({ wave, currentUser, onCommentsClick = false }) => {
               />
             )}
 
-            {wave.rating && (
-                  <Flex
-                    position="absolute"
-                    bottom="3%" // Position from bottom of media
-                    left="50%"
-                    transform="translateX(-50%)"
-                    zIndex="10"
-                    bg={isDark ? "blue.900" : "blue.50"} 
-                    py={1}
-                    px={3}
-                    align="center"
-                    justify="center"
-                    borderRadius="full"
-                    boxShadow="md"
-                    borderWidth="1px"
-                    borderColor={isDark ? "blue.800" : "blue.100"}
-                    transition="all 0.2s"
-                    _groupHover={{ opacity: 0.9 }}
-                  >
-                    <HStack spacing={2}>
-                      <Icon as={FiStar} color="yellow.400" boxSize={3} />
-                      <Text fontSize="sm" fontWeight="bold">Rated: {wave.rating.toFixed(1)}/5.0</Text>
-                    </HStack>
-                  </Flex>
-                )}
+            {renderWaveRating()}
 
             {wave.mediaType === 'video' && (
               <>
@@ -681,20 +946,92 @@ const WaveCard = ({ wave, currentUser, onCommentsClick = false }) => {
         </Box>
       )}
 
-      {/* Content Section - Compact info section */}
-      <Box p={3}>
-        {/* Compact wave content */}
-        {wave.title && (
-          <Text fontWeight="bold" fontSize="md" mb={1} isTruncated>
-            {wave.title}
-          </Text>
-        )}
-        
-        {wave.content && (
-          <Text fontSize="sm" mb={2} noOfLines={2}>
+<Box p={3} position="relative">
+  {/* Wave content */}
+  <Box position="relative">
+    {isExpanded ? (
+      <motion.div
+        initial={{ opacity: 0, height: 0 }}
+        animate={{ 
+          opacity: 1,
+          height: "auto", 
+          transition: { duration: 0.3 }
+        }}
+        style={{
+          position: 'absolute',
+          bottom: '100%',
+          left: -12,
+          right: -12,
+          width: 'calc(100% + 24px)',
+          zIndex: 20
+        }}
+      >
+        <Box
+          bg={isDark ? '#1a1a1a' : '#f8f9fa'} 
+          p={4}
+          pb={10}
+          boxShadow={isDark ? "0 -4px 12px rgba(0,0,0,0.15)" : "0 -4px 12px rgba(0,0,0,0.08)"}
+          borderTopRadius="md"
+          maxHeight="300px"
+          overflowY="auto"
+          width="100%"
+        >
+          {/* Title in expanded view */}
+          {wave.title && (
+            <Text fontWeight="bold" fontSize="md" mb={2}>
+              {wave.title}
+            </Text>
+          )}
+          <Text fontSize="sm">
             {wave.content}
           </Text>
+          <Button 
+            size="xs" 
+            variant="ghost" 
+            onClick={(e) => {
+              e.stopPropagation();
+              setIsExpanded(false);
+            }}
+            position="absolute"
+            bottom="1rem"
+            right="1rem"
+          >
+            Show less
+          </Button>
+        </Box>
+      </motion.div>
+    ) : (
+      wave.title && (
+        <Text fontWeight="bold" fontSize="md" mb={1} isTruncated>
+          {wave.title}
+        </Text>
+      )
+    )}
+    
+    {wave.content && !isExpanded && (
+      <Text fontSize="sm" mb={2} noOfLines={2} position="relative">
+        {wave.content}
+        {wave.content.split(' ').length > 20 && (
+          <Text
+            as="span"
+            color="blue.500"
+            cursor="pointer"
+            fontWeight="medium"
+            onClick={(e) => {
+              e.stopPropagation();
+              setIsExpanded(true);
+            }}
+            position="absolute"
+            right={0}
+            bottom={0}
+            bg={isDark ? "#1a1a1a" : "#f8f9fa"}
+          >
+            ... More
+          </Text>
         )}
+      </Text>
+    )}
+  </Box>
         
         {/* Compact action buttons */}
         <Flex justify="space-between" align="center" pt={1}>
@@ -737,7 +1074,7 @@ const WaveCard = ({ wave, currentUser, onCommentsClick = false }) => {
               }}
               borderRadius="full"
             />
-            
+
             <IconButton
               aria-label="Share"
               icon={<FiShare2 size={18} />}
@@ -755,6 +1092,29 @@ const WaveCard = ({ wave, currentUser, onCommentsClick = false }) => {
               }}
               borderRadius="full"
             />
+            
+            {wave.waveType === 'community' && !isOwner && (
+              <Button
+                size="sm"
+                variant="ghost"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  handleRateClick();
+                }}
+                bg={isDark ? "whiteAlpha.100" : "blackAlpha.50"}
+                _hover={{
+                  bg: isDark ? "whiteAlpha.200" : "blackAlpha.100"
+                }}
+                color={userRating ? (isDark ? "yellow.400" : "yellow.500") : (isDark ? "white" : "black")}
+                leftIcon={<FiStar 
+                  fill={userRating ? (isDark ? "yellow.400" : "yellow.500") : "transparent"} 
+                  size={14}
+                />}
+                borderRadius="full"
+              >
+                {userRating ? 'Update' : 'Rate'}
+              </Button>
+            )}
           </HStack>
           
           <IconButton
@@ -778,12 +1138,20 @@ const WaveCard = ({ wave, currentUser, onCommentsClick = false }) => {
           />
         </Flex>
         
-        {/* Compact stats */}
         <Flex justify="space-between" align="center" mt={1}>
           <HStack spacing={2} color={isDark ? "gray.400" : "gray.500"} fontSize="xs">
             <Text>{getLikesText(localLikes.count)} likes</Text>
             <Text>•</Text>
             <Text>{getCommentsText(wave.commentsList?.length)}</Text>
+            {wave.waveType === 'community' && wave.averageRating && (
+              <>
+                <Text>•</Text>
+                <HStack spacing={0.5}>
+                  <Icon as={FiStar} color="yellow.400" boxSize={2.5} />
+                  <Text>{wave.averageRating.toFixed(1)}/{wave.communityRatingScale}</Text>
+                </HStack>
+              </>
+            )}
           </HStack>
           {wave.category && (
             <Badge colorScheme="blue" variant="subtle" rounded="full" fontSize="xs" px={2}>
@@ -846,6 +1214,105 @@ const WaveCard = ({ wave, currentUser, onCommentsClick = false }) => {
           </Box>
         </Box>
       )}
+
+      {/* Rating Modal */}
+      <Modal 
+        isOpen={showRatingModal} 
+        onClose={() => setShowRatingModal(false)}
+        isCentered
+        motionPreset="slideInBottom"
+      >
+        <ModalOverlay bg="blackAlpha.300" backdropFilter="blur(5px)" />
+        <ModalContent 
+          bg={isDark ? "#1a1a1a" : "white"}
+          boxShadow="xl"
+          borderRadius="lg"
+          maxW="400px"
+        >
+          <ModalHeader 
+            borderBottom="1px solid" 
+            borderColor={isDark ? "gray.700" : "gray.200"}
+            pb={3}
+          >
+            {userRating ? 'Update Your Rating' : 'Rate This Wave'}
+          </ModalHeader>
+          <ModalCloseButton size="md" top="12px" />
+          <ModalBody py={5}>
+            <VStack spacing={4}>
+              <Box textAlign="center" width="100%">
+                <Text fontSize="lg" fontWeight="bold" mb={2}>
+                  {wave.title || 'Untitled Wave'}
+                </Text>
+                <Badge 
+                  colorScheme={wave.waveType === 'community' ? "purple" : "blue"}
+                  px={2}
+                  py={1}
+                  borderRadius="full"
+                >
+                  {wave.waveType === 'community' ? 'Community Wave' : 'Personal Wave'}
+                </Badge>
+              </Box>
+              
+              <Divider />
+              
+              {renderRatingControl()}
+              
+              {userRating && (
+                <Text 
+                  fontSize="sm" 
+                  color={isDark ? "gray.400" : "gray.600"}
+                  fontStyle="italic"
+                >
+                  Your previous rating: {userRating}/{wave.communityRatingScale}
+                </Text>
+              )}
+            </VStack>
+          </ModalBody>
+          <ModalFooter 
+            borderTop="1px solid" 
+            borderColor={isDark ? "gray.700" : "gray.200"}
+            pt={3}
+          >
+            <Flex width="100%" justify="space-between">
+              <Box>
+                {userRating && (
+                  <Button
+                    variant="ghost"
+                    colorScheme="red"
+                    onClick={handleRemoveRating}
+                    leftIcon={<Icon as={FiX} />}
+                    size="sm"
+                    _hover={{ bg: isDark ? "red.900" : "red.50" }}
+                  >
+                    Remove Rating
+                  </Button>
+                )}
+              </Box>
+              <HStack spacing={2}>
+                <Button
+                  variant="outline"
+                  onClick={() => setShowRatingModal(false)}
+                  size="sm"
+                >
+                  Cancel
+                </Button>
+                {(!userRating || tempRating !== userRating) && (
+                  <Button
+                    colorScheme="yellow"
+                    onClick={submitRating}
+                    size="sm"
+                    leftIcon={<Icon as={FiCheck} />}
+                    _hover={{ transform: "translateY(-2px)" }}
+                    transition="all 0.2s"
+                  >
+                    {userRating ? 'Update Rating' : 'Submit Rating'}
+                  </Button>
+                )}
+              </HStack>
+            </Flex>
+          </ModalFooter>
+        </ModalContent>
+      </Modal>
     </Box>
   );
 };

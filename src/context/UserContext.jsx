@@ -33,6 +33,8 @@ const processUserData = (userData, userId) => {
     waves: userData.waves || [],
     likes: userData.likes || [],
     bookmarks: userData.bookmarks || [],
+    ratingsGiven: userData.ratingsGiven || [], 
+    averageRatingReceived: userData.averageRatingReceived || 0, 
     createdAt: userData.createdAt?.toDate?.() || new Date(),
     updatedAt: userData.updatedAt?.toDate?.() || null,
     lastLogin: userData.lastLogin?.toDate?.() || null
@@ -53,17 +55,30 @@ export const UserProvider = ({ children }) => {
 
           if (userDocSnap.exists()) {
             // Load user profile and their content
-            const [wavesSnap, likesSnap, bookmarksSnap] = await Promise.all([
+            const [wavesSnap, likesSnap, bookmarksSnap, ratingsSnap] = await Promise.all([
               getDocs(query(collection(db, 'waves'), where('userId', '==', user.uid), limit(100))),
               getDocs(query(collection(db, 'likes'), where('userId', '==', user.uid))),
-              getDocs(query(collection(db, 'bookmarks'), where('userId', '==', user.uid)))
+              getDocs(query(collection(db, 'bookmarks'), where('userId', '==', user.uid))),
+              getDocs(query(collection(db, 'ratings'), where('userId', '==', user.uid)))
             ]);
+
+            // Calculate average rating received from community waves
+            const userWaves = wavesSnap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+            const communityWaves = userWaves.filter(wave => wave.waveType === 'community');
+            const totalRatings = communityWaves.reduce((sum, wave) => sum + (wave.averageRating || 0), 0);
+            const avgRating = communityWaves.length > 0 ? totalRatings / communityWaves.length : 0;
 
             const userData = {
               ...userDocSnap.data(),
-              waves: wavesSnap.docs.map(doc => ({ id: doc.id, ...doc.data() })),
+              waves: userWaves,
               likes: likesSnap.docs.map(doc => doc.data().waveId),
-              bookmarks: bookmarksSnap.docs.map(doc => doc.data().waveId)
+              bookmarks: bookmarksSnap.docs.map(doc => doc.data().waveId),
+              ratingsGiven: ratingsSnap.docs.map(doc => ({
+                waveId: doc.data().waveId,
+                rating: doc.data().rating,
+                timestamp: doc.data().timestamp?.toDate?.() || null
+              })),
+              averageRatingReceived: parseFloat(avgRating.toFixed(1))
             };
 
             // Update last login
@@ -80,7 +95,8 @@ export const UserProvider = ({ children }) => {
               username: processedData.username,
               displayName: processedData.displayName,
               profileImage: processedData.profileImage,
-              uid: user.uid
+              uid: user.uid,
+              averageRatingReceived: processedData.averageRatingReceived
             }));
           } else {
             // Create new user profile
@@ -97,6 +113,8 @@ export const UserProvider = ({ children }) => {
               waves: [],
               likes: [],
               bookmarks: [],
+              ratingsGiven: [],
+              averageRatingReceived: 0,
               createdAt: serverTimestamp(),
               lastLogin: serverTimestamp(),
               lastLoginDevice: navigator.userAgent
@@ -110,7 +128,8 @@ export const UserProvider = ({ children }) => {
               username: processedData.username,
               displayName: processedData.displayName,
               profileImage: processedData.profileImage,
-              uid: user.uid
+              uid: user.uid,
+              averageRatingReceived: 0
             }));
           }
         } else {
@@ -151,7 +170,8 @@ export const UserProvider = ({ children }) => {
           username: updatedUser.username,
           displayName: updatedUser.displayName,
           profileImage: updatedUser.profileImage,
-          uid: updatedUser.uid
+          uid: updatedUser.uid,
+          averageRatingReceived: updatedUser.averageRatingReceived
         }));
         return updatedUser;
       });
@@ -228,7 +248,23 @@ export const UserProvider = ({ children }) => {
       const userDocSnap = await getDoc(userDocRef);
 
       if (userDocSnap.exists()) {
-        return processUserData(userDocSnap.data(), userId);
+        // Get user's community waves to calculate average rating
+        const wavesSnap = await getDocs(
+          query(
+            collection(db, 'waves'), 
+            where('userId', '==', userId),
+            where('waveType', '==', 'community')
+          )
+        );
+        
+        const communityWaves = wavesSnap.docs.map(doc => doc.data());
+        const totalRatings = communityWaves.reduce((sum, wave) => sum + (wave.averageRating || 0), 0);
+        const avgRating = communityWaves.length > 0 ? totalRatings / communityWaves.length : 0;
+
+        return {
+          ...processUserData(userDocSnap.data(), userId),
+          averageRatingReceived: parseFloat(avgRating.toFixed(1))
+        };
       }
       return null;
     } catch (error) {
@@ -250,12 +286,121 @@ export const UserProvider = ({ children }) => {
       }
   
       const userDoc = querySnapshot.docs[0];
-      return processUserData(userDoc.data(), userDoc.id);
+      
+      // Get user's community waves to calculate average rating
+      const wavesSnap = await getDocs(
+        query(
+          collection(db, 'waves'), 
+          where('userId', '==', userDoc.id),
+          where('waveType', '==', 'community')
+        )
+      );
+      
+      const communityWaves = wavesSnap.docs.map(doc => doc.data());
+      const totalRatings = communityWaves.reduce((sum, wave) => sum + (wave.averageRating || 0), 0);
+      const avgRating = communityWaves.length > 0 ? totalRatings / communityWaves.length : 0;
+
+      return {
+        ...processUserData(userDoc.data(), userDoc.id),
+        averageRatingReceived: parseFloat(avgRating.toFixed(1))
+      };
     } catch (error) {
       console.error("Error getting user by username:", error);
       return null;
     }
   }, []);
+
+  const submitRating = useCallback(async (waveId, rating) => {
+    if (!currentUser?.uid) {
+      console.error("Submit Rating Error: Not authenticated");
+      return false;
+    }
+
+    try {
+      const batch = writeBatch(db);
+      const waveRef = doc(db, 'waves', waveId);
+      const ratingRef = doc(collection(db, 'ratings'), `${currentUser.uid}_${waveId}`);
+      
+      // Get the wave to verify it's a community wave
+      const waveSnap = await getDoc(waveRef);
+      if (!waveSnap.exists() || waveSnap.data().waveType !== 'community') {
+        throw new Error("Can only rate community waves");
+      }
+
+      // Remove existing rating if it exists
+      const existingRating = currentUser.ratingsGiven?.find(r => r.waveId === waveId);
+      const waveData = waveSnap.data();
+      let updatedRatings = [...(waveData.communityRatings || [])];
+      
+      if (existingRating) {
+        updatedRatings = updatedRatings.filter(r => r.userId !== currentUser.uid);
+      }
+      
+      // Add new rating
+      updatedRatings.push({
+        userId: currentUser.uid,
+        rating: rating,
+        timestamp: serverTimestamp()
+      });
+      
+      // Calculate new average
+      const averageRating = updatedRatings.reduce((sum, r) => sum + r.rating, 0) / updatedRatings.length;
+      
+      // Update wave with new rating
+      batch.update(waveRef, {
+        communityRatings: updatedRatings,
+        averageRating: parseFloat(averageRating.toFixed(1))
+      });
+      
+      // Record the rating in the ratings collection
+      batch.set(ratingRef, {
+        userId: currentUser.uid,
+        waveId: waveId,
+        rating: rating,
+        timestamp: serverTimestamp()
+      });
+      
+      await batch.commit();
+      
+      // Update local user state
+      setCurrentUser(prev => {
+        if (!prev) return null;
+        
+        const updatedRatingsGiven = [...(prev.ratingsGiven || [])];
+        const existingRatingIndex = updatedRatingsGiven.findIndex(r => r.waveId === waveId);
+        
+        if (existingRatingIndex >= 0) {
+          updatedRatingsGiven[existingRatingIndex] = {
+            waveId,
+            rating,
+            timestamp: new Date()
+          };
+        } else {
+          updatedRatingsGiven.push({
+            waveId,
+            rating,
+            timestamp: new Date()
+          });
+        }
+        
+        return {
+          ...prev,
+          ratingsGiven: updatedRatingsGiven
+        };
+      });
+      
+      return true;
+    } catch (error) {
+      console.error("Error submitting rating:", error);
+      return false;
+    }
+  }, [currentUser]);
+
+  const getUserRatingForWave = useCallback((waveId) => {
+    if (!currentUser?.ratingsGiven || !waveId) return null;
+    const rating = currentUser.ratingsGiven.find(r => r.waveId === waveId);
+    return rating ? rating.rating : null;
+  }, [currentUser]);
 
   const logout = useCallback(async () => {
     try {
@@ -277,17 +422,30 @@ export const UserProvider = ({ children }) => {
       const userDocSnap = await getDoc(userDocRef);
       
       if (userDocSnap.exists()) {
-        const [wavesSnap, likesSnap, bookmarksSnap] = await Promise.all([
+        const [wavesSnap, likesSnap, bookmarksSnap, ratingsSnap] = await Promise.all([
           getDocs(query(collection(db, 'waves'), where('userId', '==', auth.currentUser.uid), limit(100))),
           getDocs(query(collection(db, 'likes'), where('userId', '==', auth.currentUser.uid))),
-          getDocs(query(collection(db, 'bookmarks'), where('userId', '==', auth.currentUser.uid)))
+          getDocs(query(collection(db, 'bookmarks'), where('userId', '==', auth.currentUser.uid))),
+          getDocs(query(collection(db, 'ratings'), where('userId', '==', auth.currentUser.uid)))
         ]);
+
+        // Calculate average rating received from community waves
+        const userWaves = wavesSnap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+        const communityWaves = userWaves.filter(wave => wave.waveType === 'community');
+        const totalRatings = communityWaves.reduce((sum, wave) => sum + (wave.averageRating || 0), 0);
+        const avgRating = communityWaves.length > 0 ? totalRatings / communityWaves.length : 0;
 
         const userData = {
           ...userDocSnap.data(),
-          waves: wavesSnap.docs.map(doc => ({ id: doc.id, ...doc.data() })),
+          waves: userWaves,
           likes: likesSnap.docs.map(doc => doc.data().waveId),
-          bookmarks: bookmarksSnap.docs.map(doc => doc.data().waveId)
+          bookmarks: bookmarksSnap.docs.map(doc => doc.data().waveId),
+          ratingsGiven: ratingsSnap.docs.map(doc => ({
+            waveId: doc.data().waveId,
+            rating: doc.data().rating,
+            timestamp: doc.data().timestamp?.toDate?.() || null
+          })),
+          averageRatingReceived: parseFloat(avgRating.toFixed(1))
         };
 
         const processedData = processUserData(userData, auth.currentUser.uid);
@@ -311,7 +469,9 @@ export const UserProvider = ({ children }) => {
     getUserByUsername,
     setCurrentUser,
     logout,
-    refreshUserData
+    refreshUserData,
+    submitRating,
+    getUserRatingForWave
   };
 
   return (

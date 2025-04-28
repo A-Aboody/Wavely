@@ -39,7 +39,6 @@ export const WaveProvider = ({ children }) => {
   const [loading, setLoading] = useState(true);
   const [userProfileCache, setUserProfileCache] = useState({});
 
-  // Fetch user profile data and cache it
   const fetchUserProfile = useCallback(async (userId) => {
     if (!userId || userProfileCache[userId]) return;
     
@@ -63,7 +62,6 @@ export const WaveProvider = ({ children }) => {
     }
   }, [userProfileCache]);
 
-  // Process waves data with user profile information
   const processWavesData = useCallback((rawWaves) => {
     return rawWaves.map(wave => {
       const userProfile = userProfileCache[wave.userId] || {};
@@ -71,7 +69,10 @@ export const WaveProvider = ({ children }) => {
         ...wave,
         displayName: userProfile.displayName || wave.displayName || 'User',
         username: userProfile.username || wave.username || 'user',
-        profileImage: userProfile.profileImage || wave.profileImage || '/default-avatar.png'
+        profileImage: userProfile.profileImage || wave.profileImage || '/default-avatar.png',
+        likedBy: Array.isArray(wave.likedBy) ? wave.likedBy : [],
+        commentsList: Array.isArray(wave.commentsList) ? wave.commentsList : [],
+        communityRatings: Array.isArray(wave.communityRatings) ? wave.communityRatings : []
       };
     });
   }, [userProfileCache]);
@@ -87,7 +88,6 @@ export const WaveProvider = ({ children }) => {
       const wavesData = [];
       const userIds = new Set();
       
-      // First pass: collect all user IDs
       querySnapshot.forEach((doc) => {
         const data = doc.data();
         if (data.userId) {
@@ -101,10 +101,8 @@ export const WaveProvider = ({ children }) => {
         });
       });
 
-      // Fetch profiles for all users mentioned in waves
       await Promise.all(Array.from(userIds).map(userId => fetchUserProfile(userId)));
       
-      // Process waves with profile data
       setWaves(processWavesData(wavesData));
       setLoading(false);
     }, (error) => {
@@ -125,7 +123,12 @@ export const WaveProvider = ({ children }) => {
         comments: waveData.comments ?? 0,
         views: waveData.views ?? 0,
         likedBy: waveData.likedBy ?? [],
-        commentsList: waveData.commentsList ?? []
+        commentsList: waveData.commentsList ?? [],
+        communityRatings: waveData.communityRatings ?? [],
+        waveType: waveData.waveType || 'personal',
+        rating: waveData.rating || null,
+        ratingScale: waveData.ratingScale || null,
+        averageRating: waveData.averageRating || null
       });
       return docRef.id;
     } catch (error) {
@@ -184,11 +187,53 @@ export const WaveProvider = ({ children }) => {
     }
   };
 
-  // Update user profile cache and waves when user data changes
+  const addRating = async (waveId, userId, rating) => {
+    try {
+      const waveRef = doc(db, 'waves', waveId);
+      const waveSnap = await getDoc(waveRef);
+      
+      if (!waveSnap.exists()) {
+        throw new Error("Wave not found");
+      }
+
+      const waveData = waveSnap.data();
+      
+      // Check if this is a community wave
+      if (waveData.waveType !== 'community') {
+        throw new Error("Only community waves can be rated by users");
+      }
+
+      // Check if user already rated this wave
+      const existingRatingIndex = waveData.communityRatings?.findIndex(r => r.userId === userId) ?? -1;
+      
+      let updatedRatings = Array.isArray(waveData.communityRatings) 
+        ? [...waveData.communityRatings] 
+        : [];
+
+      if (existingRatingIndex >= 0) {
+        updatedRatings[existingRatingIndex] = { userId, rating };
+      } else {
+        updatedRatings.push({ userId, rating });
+      }
+
+      // Calculate new average rating
+      const averageRating = updatedRatings.reduce((sum, r) => sum + r.rating, 0) / updatedRatings.length;
+
+      await updateDoc(waveRef, {
+        communityRatings: updatedRatings,
+        averageRating: parseFloat(averageRating.toFixed(1))
+      });
+
+      return averageRating;
+    } catch (error) {
+      console.error("Error adding rating:", error);
+      throw error;
+    }
+  };
+
   const updateUserDataOnWaves = useCallback((userId, updatedData) => {
     if (!userId) return;
 
-    // Update profile cache
     setUserProfileCache(prev => ({
       ...prev,
       [userId]: {
@@ -197,7 +242,6 @@ export const WaveProvider = ({ children }) => {
       }
     }));
 
-    // Update waves in state
     setWaves(prevWaves => {
       return prevWaves.map(wave => {
         if (wave.userId === userId) {
@@ -220,8 +264,9 @@ export const WaveProvider = ({ children }) => {
     deleteWave,
     likeWave,
     addComment,
+    addRating,
     updateUserDataOnWaves,
-    fetchUserProfile // Expose fetchUserProfile for manual triggering if needed
+    fetchUserProfile
   };
 
   return (

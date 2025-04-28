@@ -38,7 +38,7 @@ const AuthForm = ({ initialMode = true }) => {
     email: '',
     password: '',
     confirmPassword: '',
-    username: '' // Added username field
+    username: '' 
   });
   
   // Update login/signup mode if passed from parent
@@ -72,7 +72,6 @@ const AuthForm = ({ initialMode = true }) => {
         const userCredential = await createUserWithEmailAndPassword(auth, inputs.email, inputs.password);
         const user = userCredential.user;
         
-        // Create user document in Firestore with added bannerImage field
         await setDoc(doc(db, "users", user.uid), {
           email: inputs.email,
           username: inputs.username || inputs.email.split('@')[0],

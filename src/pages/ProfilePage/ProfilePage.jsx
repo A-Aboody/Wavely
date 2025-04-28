@@ -123,9 +123,7 @@ const ProfilePage = () => {
       try {
         let user = null;
         
-        // First priority: Check for username in URL
         if (username) {
-          // If username matches current user, use current user data
           if (currentUser && username === currentUser.username) {
             user = currentUser;
           } else {
@@ -143,13 +141,10 @@ const ProfilePage = () => {
             }
           }
         }
-        // Second priority: If no username in URL, show current user's profile
         else if (currentUser) {
           user = currentUser;
-          // Update URL to include username without page reload
           navigate(`/profile/${currentUser.username}`, { replace: true });
         }
-        // Last case: No username in URL and no logged in user
         else {
           toast({
             title: "Not logged in",
@@ -192,16 +187,15 @@ const ProfilePage = () => {
     }
   }, [isEditModalOpen, profileUser]);
 
-  // Responsive design handler
   useEffect(() => {
     const handleResize = () => setIsMobile(window.innerWidth < 768);
     window.addEventListener('resize', handleResize);
     return () => window.removeEventListener('resize', handleResize);
   }, []);
 
-  // Filter waves based on the profileUser being viewed
   const userWaves = waves.filter(wave => wave.userId === (profileUser?.uid || ''));
   const likedWaves = waves.filter(wave => wave.likedBy?.includes(profileUser?.uid || ''));
+  const communityWaves = userWaves.filter(wave => wave.waveType === 'community');
 
   // Check if the currently viewed profile belongs to the logged-in user
   const isCurrentUserProfile = currentUser?.uid === profileUser?.uid;
@@ -341,10 +335,8 @@ const ProfilePage = () => {
 
   const handleSubmit = async (data) => {
     try {
-      // Update profile in database
       const success = await updateProfile(data);
       if (success) {
-        // Refresh user data
         const updatedUser = await getUserByUsername(username);
         setProfileUser(updatedUser);
         return true;
@@ -364,7 +356,6 @@ const ProfilePage = () => {
   };
 
   const handleDeleteSuccess = () => {
-    // Refresh the page or update state as needed
   };
 
   const renderWaveThumbnail = (wave) => {
@@ -485,7 +476,6 @@ const ProfilePage = () => {
         : await followUser(profileUser.uid);
 
       if (success) {
-        // Update the local profileUser state to reflect the new follower count
         setProfileUser(prev => ({
           ...prev,
           followers: isFollowing()
@@ -569,7 +559,6 @@ const ProfilePage = () => {
                 }}>
                   Share Profile
                 </MenuItem>
-                {/* Add more options here if needed */}
               </MenuList>
             </Menu>
           )}
@@ -646,9 +635,14 @@ const ProfilePage = () => {
                 <Text fontWeight="bold">{profileUser.following?.length || 0}</Text>
                 <Text fontSize="sm" color="gray.500">Following</Text>
               </VStack>
+              {communityWaves.length > 0 && (
+                <VStack spacing={0}>
+                  <Text fontWeight="bold">{communityWaves.length}</Text>
+                  <Text fontSize="sm" color="gray.500">Community</Text>
+                </VStack>
+              )}
             </HStack>
 
-            // Add these components before the closing Box tag
             <FollowersModal
               isOpen={isFollowersModalOpen}
               onClose={() => setIsFollowersModalOpen(false)}
@@ -664,16 +658,16 @@ const ProfilePage = () => {
             
             {!isCurrentUserProfile && currentUser && (
               <Button 
-              colorScheme={isFollowing() ? "gray" : "blue"}
-              size="sm"
-              mt={4}
-              onClick={handleFollowAction}
-              isLoading={isFollowLoading}
-              loadingText={isFollowing() ? "Unfollowing..." : "Following..."}
-              leftIcon={isFollowing() ? <Icon as={FiUserX} /> : <Icon as={FiUserPlus} />}
-            >
-              {isFollowing() ? "Unfollow" : "Follow"}
-            </Button>
+                colorScheme={isFollowing() ? "gray" : "blue"}
+                size="sm"
+                mt={4}
+                onClick={handleFollowAction}
+                isLoading={isFollowLoading}
+                loadingText={isFollowing() ? "Unfollowing..." : "Following..."}
+                leftIcon={isFollowing() ? <Icon as={FiUserX} /> : <Icon as={FiUserPlus} />}
+              >
+                {isFollowing() ? "Unfollow" : "Follow"}
+              </Button>
             )}
           </VStack>
         </Flex>
@@ -684,6 +678,7 @@ const ProfilePage = () => {
             <TabList mb={4}>
               <Tab><HStack><Icon as={FiUser} mr={2} /><Text>Waves</Text></HStack></Tab>
               <Tab><HStack><Icon as={FiHeart} mr={2} /><Text>Liked</Text></HStack></Tab>
+              <Tab><HStack><Icon as={FiUsers} mr={2} /><Text>Community</Text></HStack></Tab>
             </TabList>
 
             <TabPanels>
@@ -748,6 +743,70 @@ const ProfilePage = () => {
                   </Box>
                 )}
               </TabPanel>
+
+              {/* Community Waves Tab */}
+              <TabPanel p={0}>
+                {communityWaves.length > 0 ? (
+                  <Grid
+                    templateColumns={{
+                      base: 'repeat(auto-fill, minmax(200px, 1fr))',
+                      md: 'repeat(auto-fill, minmax(240px, 1fr))',
+                    }}
+                    gap={4}
+                  >
+                    {communityWaves
+                      .sort((a, b) => new Date(b.timestamp || 0) - new Date(a.timestamp || 0))
+                      .map(wave => (
+                        <Box key={wave.id} position="relative">
+                          {renderWaveThumbnail(wave)}
+                          <Badge 
+                            position="absolute" 
+                            top="2" 
+                            right="2" 
+                            colorScheme="purple" 
+                            variant="solid"
+                            borderRadius="full"
+                            px={2}
+                          >
+                            <HStack spacing={1}>
+                              <Icon as={FiStar} boxSize={3} />
+                              <Text fontSize="xs">{wave.averageRating?.toFixed(1) || '0'}/{wave.communityRatingScale}</Text>
+                            </HStack>
+                          </Badge>
+                        </Box>
+                      ))
+                    }
+                  </Grid>
+                ) : (
+                  <Box 
+                    textAlign="center" 
+                    py={10} 
+                    px={6} 
+                    borderWidth="1px" 
+                    borderRadius="lg" 
+                    bg={colorMode === 'dark' ? 'gray.800' : 'white'}
+                  >
+                    <Icon as={FiUsers} boxSize={'50px'} color={'purple.300'} />
+                    <Heading as="h2" size="xl" mt={6} mb={2}>
+                      No Community Waves
+                    </Heading>
+                    <Text fontSize="lg" color="gray.500" mb={6}>
+                      {isCurrentUserProfile ?
+                        "You haven't posted any community waves yet. Create one to get community ratings!" : 
+                        `${profileUser.displayName} hasn't posted any community waves yet.`}
+                    </Text>
+                    {isCurrentUserProfile && (
+                      <Button 
+                        colorScheme="purple" 
+                        onClick={() => navigate('/create')}
+                        leftIcon={<Icon as={FiUsers} />}
+                      >
+                        Create Community Wave
+                      </Button>
+                    )}
+                  </Box>
+                )}
+              </TabPanel>
             </TabPanels>
           </Tabs>
         </Box>
@@ -755,15 +814,15 @@ const ProfilePage = () => {
 
       {/* Edit Profile Modal - Only show for current user */}
       {isCurrentUserProfile && (
-      <EditProfileModal
-        isOpen={isEditModalOpen}
-        onClose={onEditModalClose}
-        profileUser={profileUser}
-        onUpdateProfile={handleSubmit}
-        onImageUpload={handleImageUpload}
-        imageUploading={imageUploading}
-      />
-    )}
+        <EditProfileModal
+          isOpen={isEditModalOpen}
+          onClose={onEditModalClose}
+          profileUser={profileUser}
+          onUpdateProfile={handleSubmit}
+          onImageUpload={handleImageUpload}
+          imageUploading={imageUploading}
+        />
+      )}
 
       {/* Wave Detail Modal */}
       {selectedWave && (
